@@ -21,10 +21,17 @@ import type {
   DepartmentInsights,
 } from '../types/api';
 
-import demoUsers from '../mock/demo_users.json';
+import demoUserFixtures from '../mock/demo_users.json';
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false';
+
+const demoUsers: User[] = demoUserFixtures.map(({ user_id, role, ...profile }) => {
+  if (role !== 'student' && role !== 'faculty' && role !== 'hod') {
+    throw new Error(`Invalid role for demo user ${user_id}: ${role}`);
+  }
+  return { ...profile, id: user_id, role };
+});
 
 // Token storage helpers
 export function getToken(): string | null {
@@ -216,14 +223,14 @@ export const api = {
   auth: {
     async getDemoUsers(): Promise<User[]> {
       if (USE_MOCK) {
-        return demoUsers as User[];
+        return demoUsers;
       }
       return request<User[]>('/auth/demo-users');
     },
 
     async login(login_id: string, _password?: string): Promise<AuthResponse> {
       if (USE_MOCK) {
-        const user = (demoUsers as User[]).find((u) => u.login_id === login_id) || {
+        const user = demoUsers.find((u) => u.login_id === login_id) || {
           id: 'S0274',
           login_id: 'shreyansh',
           name: 'Shreyansh',
@@ -489,7 +496,7 @@ export const api = {
     },
 
     async getMyToday(): Promise<TodayOverview> {
-      const user = getCurrentUser() || (demoUsers[0] as User);
+      const user = getCurrentUser() || demoUsers[0];
       const scheduleSlots = await api.schedule.getTimetable(user.section || 'CSE-10');
       return {
         date: '2026-12-03',
