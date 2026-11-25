@@ -1,11 +1,8 @@
 import React from 'react';
-import rawTodayData from '../../../mock/student_today.json';
 import {
   Bell,
   ArrowRightLeft,
   Clock,
-  MapPin,
-  CheckCircle2,
   Award,
   AlertTriangle,
   Home,

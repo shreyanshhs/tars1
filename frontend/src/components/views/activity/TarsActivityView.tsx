@@ -10,8 +10,6 @@ import {
   ShieldCheck,
   Check,
   X,
-  Clock,
-  UserCheck,
 } from 'lucide-react';
 
 interface DecisionOption {

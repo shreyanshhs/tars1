@@ -5,12 +5,8 @@ import {
   Sparkles,
   AlertTriangle,
   Award,
-  Calendar,
-  CheckCircle2,
   Clock,
   MapPin,
-  ChevronRight,
-  TrendingUp,
 } from 'lucide-react';
 
 interface StudentTimelineSlot {
