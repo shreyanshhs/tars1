@@ -1,15 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import rawDecisions from '../../../mock/decisions.json';
 import {
-  Sparkles,
+  Code,
+  Brain,
+  Code2,
   ChevronDown,
   ChevronRight,
-  Code,
-  CheckCircle2,
-  Brain,
-  ShieldCheck,
-  Check,
-  X,
+  Sparkles,
 } from 'lucide-react';
 
 interface DecisionOption {
@@ -53,351 +50,338 @@ interface DecisionCase {
 const decisionsList = rawDecisions as unknown as DecisionCase[];
 
 export const TarsActivityView: React.FC = () => {
-  const [expandedCaseId, setExpandedCaseId] = useState<string>(decisionsList[0]?.id || 'dec_001');
-  const [showTechDetails, setShowTechDetails] = useState<boolean>(false);
-  const [timeRange, setTimeRange] = useState<'today' | '7d' | 'semester'>('today');
+  const [timeRange, setTimeRange] = useState<'today' | '7d' | 'semester'>('7d');
+  const [showTechDetails, setShowTechDetails] = useState(false);
+  const [expandedCase, setExpandedCase] = useState(true);
+  const [liveSteps, setLiveSteps] = useState<DecisionStep[]>(decisionsList[0]?.steps || []);
 
-  const mainCase = decisionsList[0];
+  // Coordinate SSE stream contract with Anshul (Event: decision.step)
+  useEffect(() => {
+    const handleSSE = (e: Event) => {
+      const custom = e as CustomEvent<{ type: string; payload?: { step?: DecisionStep } }>;
+      if (custom.detail?.type === 'decision.step' && custom.detail.payload?.step) {
+        setLiveSteps((prev) => [...prev, custom.detail.payload!.step!]);
+      }
+    };
+
+    window.addEventListener('tars:sse', handleSSE);
+    return () => window.removeEventListener('tars:sse', handleSSE);
+  }, []);
 
   return (
-    <div className="flex-1 min-w-0 flex flex-col bg-slate-50/50">
-      {/* Top Header */}
-      <header className="sticky top-0 z-10 bg-white border-b border-slate-200 px-8 py-5 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">TARS activity</h1>
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-xs font-semibold text-indigo-700">
-              <Sparkles className="w-3 h-3 text-indigo-600" />
-              Explainable AI (XAI)
-            </span>
-          </div>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Every autonomous rescheduling decision TARS made, with mathematical rule validation and audit logs.
-          </p>
+    <div className="flex-1 min-w-0 flex flex-col bg-[#F8FAFC]">
+      {/* Top Header matching Stitch tars_activity_dr._surekha_k_b */}
+      <header className="sticky top-0 z-10 bg-[#F8FAFC] border-b border-[#E2E8F0] px-6 lg:px-8 py-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-col gap-0.5">
+          <h1 className="text-2xl font-bold tracking-tight text-[#0F172A]">TARS activity</h1>
+          <p className="text-sm text-[#475569]">Every decision TARS made, and why.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Timeframe Switcher */}
-          <div className="inline-flex items-center rounded-lg bg-slate-100 p-1 border border-slate-200 text-xs font-medium">
+          {/* Timeframe pill */}
+          <div className="inline-flex items-center rounded-full bg-[#F1F5F9] p-1 border border-[#E2E8F0]" role="group" aria-label="Timeframe">
             <button
+              type="button"
               onClick={() => setTimeRange('today')}
-              className={`px-3 py-1 rounded-md transition-colors ${
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                 timeRange === 'today'
-                  ? 'bg-white text-slate-900 font-semibold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white text-[#0F172A] border border-[#E2E8F0] shadow-xs'
+                  : 'text-[#475569] hover:text-[#0F172A]'
               }`}
             >
               Today
             </button>
             <button
+              type="button"
               onClick={() => setTimeRange('7d')}
-              className={`px-3 py-1 rounded-md transition-colors ${
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                 timeRange === '7d'
-                  ? 'bg-white text-slate-900 font-semibold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white text-[#0F172A] border border-[#E2E8F0] shadow-xs'
+                  : 'text-[#475569] hover:text-[#0F172A]'
               }`}
             >
               7D
             </button>
             <button
+              type="button"
               onClick={() => setTimeRange('semester')}
-              className={`px-3 py-1 rounded-md transition-colors ${
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                 timeRange === 'semester'
-                  ? 'bg-white text-slate-900 font-semibold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white text-[#0F172A] border border-[#E2E8F0] shadow-xs'
+                  : 'text-[#475569] hover:text-[#0F172A]'
               }`}
             >
               Semester
             </button>
           </div>
 
-          <select className="rounded-lg bg-white border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option>All decision cases</option>
+          {/* Filter dropdown */}
+          <select
+            aria-label="Filter cases"
+            className="rounded-lg bg-white border border-[#E2E8F0] px-3 py-1.5 text-xs font-medium text-[#0F172A] focus:border-[#4F46E5] focus:ring-1 focus:ring-[#4F46E5]"
+          >
+            <option>All cases</option>
             <option>Leave &amp; cover</option>
-            <option>NPTEL verifications</option>
-            <option>Event clash checks</option>
+            <option>NPTEL</option>
+            <option>Events</option>
           </select>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 px-8 py-6 max-w-6xl w-full mx-auto space-y-6">
-        {/* Top 4 Stat Tiles */}
-        <section aria-label="Activity summary metrics" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <article className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
-            <p className="text-xs font-medium text-slate-500">Classes covered</p>
-            <p className="text-3xl font-bold tracking-tight text-slate-900 mt-1 tabular-nums">12</p>
-            <p className="text-[11px] text-emerald-600 mt-1 font-medium">100% resolution rate</p>
-          </article>
+      <main className="flex-1 px-6 lg:px-8 py-6 max-w-[1360px] w-full mx-auto flex flex-col gap-6">
 
-          <article className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
-            <p className="text-xs font-medium text-slate-500">Avg time to cover</p>
-            <p className="text-3xl font-bold tracking-tight text-slate-900 mt-1 tabular-nums">1 m 48 s</p>
-            <p className="text-[11px] text-slate-400 mt-1">vs 45 min manual baseline</p>
+        {/* Top Row: 4 Stat Tiles */}
+        <section aria-label="Activity summary" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <article className="bg-white border border-[#E2E8F0] rounded-2xl p-5 flex flex-col gap-1 shadow-xs">
+            <p className="text-xs font-medium text-[#64748B]">Classes covered</p>
+            <p className="text-3xl font-bold tracking-tight text-[#0F172A] tabular-nums">12</p>
           </article>
-
-          <article className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
-            <p className="text-xs font-medium text-slate-500">HOD taps per leave</p>
-            <p className="text-3xl font-bold tracking-tight text-slate-900 mt-1 tabular-nums">1</p>
-            <p className="text-[11px] text-indigo-600 mt-1 font-medium">Single bundled sign-off</p>
+          <article className="bg-white border border-[#E2E8F0] rounded-2xl p-5 flex flex-col gap-1 shadow-xs">
+            <p className="text-xs font-medium text-[#64748B]">Avg time to cover</p>
+            <p className="text-3xl font-bold tracking-tight text-[#0F172A] tabular-nums">1 m 48 s</p>
           </article>
-
-          <article className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
-            <p className="text-xs font-medium text-slate-500">Clashes created</p>
-            <p className="text-3xl font-bold tracking-tight text-emerald-600 mt-1 tabular-nums">0</p>
-            <p className="text-[11px] text-emerald-600 mt-1 font-medium">Verified by constraint engine</p>
+          <article className="bg-white border border-[#E2E8F0] rounded-2xl p-5 flex flex-col gap-1 shadow-xs">
+            <p className="text-xs font-medium text-[#64748B]">HOD taps per leave</p>
+            <p className="text-3xl font-bold tracking-tight text-[#0F172A] tabular-nums">1</p>
+          </article>
+          <article className="bg-white border border-[#E2E8F0] rounded-2xl p-5 flex flex-col gap-1 shadow-xs">
+            <p className="text-xs font-medium text-[#64748B]">Clashes created</p>
+            <p className="text-3xl font-bold tracking-tight text-[#15803D] tabular-nums">0</p>
           </article>
         </section>
 
-        {/* Decisions Case Feed */}
-        <section className="space-y-4">
-          {mainCase && (
-            <article className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
-              {/* Case Header */}
-              <header className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
-                <div
-                  className="flex items-center gap-3 cursor-pointer"
-                  onClick={() => setExpandedCaseId(expandedCaseId === mainCase.id ? '' : mainCase.id)}
-                >
-                  <button className="text-slate-400 hover:text-slate-700">
-                    {expandedCaseId === mainCase.id ? (
-                      <ChevronDown className="w-5 h-5 text-indigo-600" />
-                    ) : (
-                      <ChevronRight className="w-5 h-5" />
-                    )}
-                  </button>
-                  <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shrink-0">
-                    <Brain className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-bold text-slate-900">
-                      Leave Substitution · Prof. Chaitra D B (Thu 26 Nov)
-                    </h2>
-                    <p className="text-xs text-slate-500">Case ID: {mainCase.id} · CSE-10 Section</p>
-                  </div>
-                </div>
+        {/* Decision Cases List */}
+        <section aria-label="Decision cases" className="flex flex-col gap-4">
 
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    HOD Approved &amp; Committed
-                  </span>
-                </div>
-              </header>
+          {/* Expanded Case: Leave · Prof. Chaitra D B · Thu 3 Dec */}
+          <article className="bg-white border border-[#E2E8F0] rounded-2xl p-6 flex flex-col gap-5 shadow-xs">
+            <header className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#E2E8F0]">
+              <div
+                className="flex items-center gap-3 cursor-pointer"
+                onClick={() => setExpandedCase(!expandedCase)}
+              >
+                {expandedCase ? (
+                  <ChevronDown className="w-5 h-5 text-[#4F46E5]" />
+                ) : (
+                  <ChevronRight className="w-5 h-5 text-[#64748B]" />
+                )}
 
-              {expandedCaseId === mainCase.id && (
-                <div className="space-y-6 animate-in fade-in duration-200">
-                  {/* Resolved Outcomes */}
-                  <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5">
-                      Substituted Outcomes
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="p-4 rounded-xl bg-violet-50/50 border border-violet-200 flex items-start gap-3">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-violet-100 text-violet-700 shrink-0 text-xs font-bold">
-                          P4
-                        </span>
-                        <div>
-                          <p className="text-sm font-semibold text-violet-950">
-                            Intro to AI → Mr. Syed Matheen Pasha
-                          </p>
-                          <p className="text-xs text-violet-700 mt-0.5">
-                            Room SJB-104 (11:35 AM – 12:30 PM). 0 clashes.
-                          </p>
-                        </div>
-                      </div>
+                {/* TARS SVG Monogram Logo */}
+                <svg width="28" height="28" viewBox="0 0 64 64" fill="none" className="shrink-0" aria-hidden="true">
+                  <rect x="4" y="4" width="56" height="56" rx="16" fill="#FFFFFF" stroke="#4F46E5" strokeWidth="4" />
+                  <path d="M18.5 34.5C20.5 28.5 25.5 28.5 27.5 34.5" stroke="#4F46E5" strokeWidth="4" strokeLinecap="round" />
+                  <path d="M36.5 34.5C38.5 28.5 43.5 28.5 45.5 34.5" stroke="#4F46E5" strokeWidth="4" strokeLinecap="round" />
+                </svg>
 
-                      <div className="p-4 rounded-xl bg-indigo-50/50 border border-indigo-200 flex items-start gap-3">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 shrink-0 text-xs font-bold">
-                          P6-7
-                        </span>
-                        <div>
-                          <p className="text-sm font-semibold text-indigo-950">
-                            Python Lab → Mrs. Geetha P L
-                          </p>
-                          <p className="text-xs text-indigo-700 mt-0.5">
-                            Lab 511C, Sir CV Raman Block (14:20 – 16:10). Co-faculty priority.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Why this choice (Plain English Rationale) & Rules Checked */}
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    {/* Why this choice */}
-                    <div className="lg:col-span-7 space-y-3">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Why this choice (Plain English Explainability)
-                      </h3>
-                      <div className="space-y-2.5 bg-slate-50/80 p-4 rounded-xl border border-slate-200/80">
-                        {mainCase.why.map((reason, idx) => (
-                          <div key={idx} className="flex items-start gap-2.5 text-xs text-slate-700">
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 mt-1.5 shrink-0" />
-                            <p className="leading-relaxed">{reason}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Rules Checked Chips */}
-                    <div className="lg:col-span-5 space-y-3">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Programmatic Constraints Verified
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {mainCase.rules.map((rule, idx) => (
-                          <span
-                            key={idx}
-                            title={rule.detail}
-                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-medium"
-                          >
-                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            {rule.name}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Options Considered Table */}
-                  <div className="space-y-3">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Options Considered (Candidate Matrix)
-                    </h3>
-                    <div className="overflow-x-auto rounded-xl border border-slate-200">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                          <tr>
-                            <th className="px-4 py-3">Teacher</th>
-                            <th className="px-4 py-3">Free in Slot?</th>
-                            <th className="px-4 py-3">Subject Competency?</th>
-                            <th className="px-4 py-3">Weekly Load</th>
-                            <th className="px-4 py-3">Resolution Result</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 text-slate-700">
-                          {mainCase.options.map((opt) => (
-                            <tr key={opt.teacher_id} className="hover:bg-slate-50/60 transition-colors">
-                              <td className="px-4 py-3 font-semibold text-slate-900">
-                                {opt.teacher_name}
-                              </td>
-                              <td className="px-4 py-3">
-                                {opt.free ? (
-                                  <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
-                                    <Check className="w-3.5 h-3.5" /> Yes
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 text-red-600 font-medium">
-                                    <X className="w-3.5 h-3.5" /> No (Clash)
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3">
-                                {opt.can_teach ? (
-                                  <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
-                                    <Check className="w-3.5 h-3.5" /> Verified
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-400">—</span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 font-mono tabular-nums text-slate-600">
-                                {opt.load} hrs/wk
-                              </td>
-                              <td className="px-4 py-3">
-                                {opt.result === 'accepted' ? (
-                                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold border border-emerald-200">
-                                    Accepted
-                                  </span>
-                                ) : opt.result === 'declined' ? (
-                                  <span
-                                    title={opt.rejection_reason}
-                                    className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold border border-amber-200 cursor-help"
-                                  >
-                                    Declined: {opt.rejection_reason}
-                                  </span>
-                                ) : (
-                                  <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                                    {opt.result}
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Step Timeline */}
-                  <div className="space-y-3">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      Autonomous Execution Timeline
-                    </h3>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs">
-                      {mainCase.steps.map((st, i) => (
-                        <React.Fragment key={i}>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-mono font-semibold text-slate-800">{st.at}</span>
-                            <span className="text-slate-600">{st.text}</span>
-                          </div>
-                          {i < mainCase.steps.length - 1 && (
-                            <span className="text-slate-400 font-bold" aria-hidden="true">
-                              →
-                            </span>
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Collapsed Technical Tool Calls Box */}
-                  <div className="pt-2 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => setShowTechDetails(!showTechDetails)}
-                      className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-indigo-600 transition-colors"
-                    >
-                      <Code className="w-4 h-4 text-slate-400" />
-                      <span>{showTechDetails ? 'Hide technical audit calls' : 'Show technical audit calls (Monospace tool trace)'}</span>
-                    </button>
-
-                    {showTechDetails && (
-                      <div className="mt-3 p-4 rounded-xl bg-slate-900 text-slate-100 font-mono text-xs overflow-x-auto leading-relaxed border border-slate-800 space-y-2">
-                        {mainCase.tool_calls.map((call, i) => (
-                          <div key={i} className="border-b border-slate-800/80 pb-2 last:border-0 last:pb-0">
-                            <span className="text-indigo-400 font-bold">{call.name}</span>
-                            <span className="text-slate-400">({JSON.stringify(call.arguments)})</span>
-                            <span className="text-emerald-400 block mt-0.5 ml-4">
-                              → {JSON.stringify(call.result)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </article>
-          )}
-
-          {/* Secondary Collapsed Decisions for History */}
-          <article className="bg-white border border-slate-200 rounded-xl px-6 py-4 flex items-center justify-between opacity-80 hover:opacity-100 transition-opacity">
-            <div className="flex items-center gap-3">
-              <ChevronRight className="w-5 h-5 text-slate-400" />
-              <ShieldCheck className="w-5 h-5 text-emerald-600" />
-              <div>
-                <p className="text-sm font-semibold text-slate-800">
-                  NPTEL Accreditation Verification Batch · 18 Certificates Extracted
-                </p>
-                <p className="text-xs text-slate-400">Yesterday 4:15 PM · 16 Verified, 2 Flagged (Name Mismatch)</p>
+                <h2 className="text-base font-bold text-[#0F172A] tabular-nums">
+                  Leave · Prof. Chaitra D B · Thu 3 Dec
+                </h2>
               </div>
+
+              <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0] text-xs font-semibold">
+                Approved
+              </span>
+            </header>
+
+            {expandedCase && (
+              <div className="flex flex-col gap-5">
+                {/* Outcomes */}
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-medium text-[#64748B]">Outcomes</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[#F5F3FF] border border-[#DDD6FE] text-[#5B21B6] shrink-0">
+                        <Brain className="w-4 h-4" />
+                      </span>
+                      <p className="text-sm text-[#0F172A] font-medium tabular-nums">
+                        Intro to AI · P4 → Mr. Syed Matheen Pasha
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[#EEF2FF] border border-[#C7D2FE] text-[#3730A3] shrink-0">
+                        <Code2 className="w-4 h-4" />
+                      </span>
+                      <p className="text-sm text-[#0F172A] font-medium tabular-nums">
+                        Python lab · P6–P7 → Mrs. Geetha P L
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Why this choice + Rules checked */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  <div className="lg:col-span-7 flex flex-col gap-2.5">
+                    <p className="text-xs font-medium text-[#64748B]">Why this choice</p>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-start gap-2.5">
+                        <Sparkles className="w-4 h-4 text-[#4F46E5] shrink-0 mt-0.5" />
+                        <p className="text-sm text-[#0F172A]">
+                          Mrs. Geetha co-teaches this lab and is free P6–P7 (load 13/18).
+                        </p>
+                      </div>
+                      <div className="flex items-start gap-2.5">
+                        <Sparkles className="w-4 h-4 text-[#4F46E5] shrink-0 mt-0.5" />
+                        <p className="text-sm text-[#0F172A]">
+                          Mr. Syed Matheen Pasha is free P4 and teaches 1st-year sections.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-5 flex flex-col gap-2.5">
+                    <p className="text-xs font-medium text-[#64748B]">Rules checked</p>
+                    <div className="flex flex-wrap gap-2">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0] text-xs font-medium">
+                        No clashes ✓
+                      </span>
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0] text-xs font-medium">
+                        Not on leave day ✓
+                      </span>
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0] text-xs font-medium tabular-nums">
+                        Attendance 78% — cancel not needed ✓
+                      </span>
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0] text-xs font-medium">
+                        HOD approval ✓
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Options considered */}
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-medium text-[#64748B]">Options considered</p>
+                  <div className="overflow-x-auto rounded-xl border border-[#E2E8F0]">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                        <tr>
+                          <th className="px-3.5 py-2.5 text-[#64748B] font-medium">Teacher</th>
+                          <th className="px-3.5 py-2.5 text-[#64748B] font-medium">Free?</th>
+                          <th className="px-3.5 py-2.5 text-[#64748B] font-medium">Can teach?</th>
+                          <th className="px-3.5 py-2.5 text-[#64748B] font-medium">Load</th>
+                          <th className="px-3.5 py-2.5 text-[#64748B] font-medium">Result</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E2E8F0] text-xs text-[#0F172A]">
+                        <tr>
+                          <td className="px-3.5 py-2.5">Mrs. Shabeena Lylath</td>
+                          <td className="px-3.5 py-2.5 text-[#475569]">yes</td>
+                          <td className="px-3.5 py-2.5 text-[#475569]">yes</td>
+                          <td className="px-3.5 py-2.5 text-[#475569] tabular-nums">12</td>
+                          <td className="px-3.5 py-2.5">
+                            <span className="px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#475569] text-xs font-medium">
+                              Declined
+                            </span>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="px-3.5 py-2.5 font-semibold text-[#0F172A]">Mr. Syed Matheen Pasha</td>
+                          <td className="px-3.5 py-2.5 text-[#475569]">yes</td>
+                          <td className="px-3.5 py-2.5 text-[#475569]">yes</td>
+                          <td className="px-3.5 py-2.5 text-[#475569] tabular-nums">14</td>
+                          <td className="px-3.5 py-2.5">
+                            <span className="px-2 py-0.5 rounded-full bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0] text-xs font-semibold">
+                              Accepted
+                            </span>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="px-3.5 py-2.5 text-[#94A3B8]">Mr. Raghavendra S</td>
+                          <td className="px-3.5 py-2.5 text-[#94A3B8]">no — teaching CSE-12</td>
+                          <td className="px-3.5 py-2.5 text-[#94A3B8]">—</td>
+                          <td className="px-3.5 py-2.5 text-[#94A3B8]">—</td>
+                          <td className="px-3.5 py-2.5">
+                            <span className="px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#94A3B8] text-xs font-medium">
+                              Skipped
+                            </span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Timeline */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-[#64748B]">Timeline</p>
+                    <span className="inline-flex items-center gap-1 text-[11px] text-[#15803D] font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#15803D] animate-pulse" />
+                      Live Stream Active
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2 p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-xs tabular-nums">
+                    {liveSteps.map((step, idx) => (
+                      <React.Fragment key={idx}>
+                        <span className="text-[#475569]">
+                          <strong className="font-semibold text-[#0F172A]">{step.at}</strong> {step.text}
+                        </span>
+                        {idx < liveSteps.length - 1 && (
+                          <span className="text-[#94A3B8]" aria-hidden="true">→</span>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Technical Details Toggle */}
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowTechDetails(!showTechDetails)}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-[#64748B] hover:text-[#4F46E5] transition-colors"
+                  >
+                    <Code className="w-4 h-4" />
+                    <span>{showTechDetails ? 'Hide technical details' : 'Show technical details'}</span>
+                  </button>
+
+                  {showTechDetails && (
+                    <pre className="mt-2.5 p-3.5 rounded-xl bg-[#0F172A] text-[#F8FAFC] border border-[#334155] font-mono text-xs overflow-x-auto leading-relaxed">
+{`find_substitutes(section="CSE-10", date="2026-12-03", periods=["P4","P6-P7"])
+send_request(to=["Mrs. Geetha P L", "Mr. Syed Matheen Pasha"])
+propose_change(leave_id="LV-1042", status="ready_for_hod")
+validate(rules=["no_clashes", "not_on_leave", "attendance_threshold_75"])`}
+                    </pre>
+                  )}
+                </div>
+              </div>
+            )}
+          </article>
+
+          {/* Collapsed Past Cases */}
+          <article className="bg-white border border-[#E2E8F0] rounded-xl px-6 py-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-3 min-w-0">
+              <ChevronRight className="w-5 h-5 text-[#94A3B8] shrink-0" />
+              <svg width="28" height="28" viewBox="0 0 64 64" fill="none" className="shrink-0" aria-hidden="true">
+                <rect x="4" y="4" width="56" height="56" rx="16" fill="#FFFFFF" stroke="#4F46E5" strokeWidth="4" />
+                <path d="M18.5 34.5C20.5 28.5 25.5 28.5 27.5 34.5" stroke="#4F46E5" strokeWidth="4" strokeLinecap="round" />
+              </svg>
+              <h3 className="text-sm font-semibold text-[#0F172A] truncate">
+                Leave · Dr. Udayabhanu · Wed 18 Nov
+              </h3>
             </div>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
-              Logged
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0] text-xs font-semibold">
+              Approved
             </span>
           </article>
+
+          <article className="bg-white border border-[#E2E8F0] rounded-xl px-6 py-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-3 min-w-0">
+              <ChevronRight className="w-5 h-5 text-[#94A3B8] shrink-0" />
+              <svg width="28" height="28" viewBox="0 0 64 64" fill="none" className="shrink-0" aria-hidden="true">
+                <rect x="4" y="4" width="56" height="56" rx="16" fill="#FFFFFF" stroke="#4F46E5" strokeWidth="4" />
+                <path d="M18.5 34.5C20.5 28.5 25.5 28.5 27.5 34.5" stroke="#4F46E5" strokeWidth="4" strokeLinecap="round" />
+              </svg>
+              <h3 className="text-sm font-semibold text-[#0F172A] truncate">
+                Leave · Mrs. Geetha P L · Mon 10 Nov
+              </h3>
+            </div>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0] text-xs font-semibold">
+              Approved
+            </span>
+          </article>
+
         </section>
       </main>
     </div>

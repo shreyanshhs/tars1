@@ -1,4 +1,5 @@
 import type {
+  Role,
   User,
   AuthResponse,
   StreamTicket,
@@ -211,25 +212,32 @@ const mockApprovals: Approval[] = [
 // Service API Exports
 // ==========================================
 
+const normalizedDemoUsers: User[] = demoUsers.map((u) => ({
+  id: u.id || u.user_id,
+  user_id: u.user_id || u.id,
+  login_id: u.login_id,
+  name: u.name,
+  role: u.role as Role,
+  section: u.section,
+  department: u.department,
+  designation: u.designation,
+  code: u.code,
+  usn: u.usn,
+}));
+
 export const api = {
   // Auth
   auth: {
     async getDemoUsers(): Promise<User[]> {
       if (USE_MOCK) {
-        return demoUsers as User[];
+        return normalizedDemoUsers;
       }
       return request<User[]>('/auth/demo-users');
     },
 
     async login(login_id: string, _password?: string): Promise<AuthResponse> {
       if (USE_MOCK) {
-        const user = (demoUsers as User[]).find((u) => u.login_id === login_id) || {
-          id: 'S0274',
-          login_id: 'shreyansh',
-          name: 'Shreyansh',
-          role: 'student' as const,
-          section: 'CSE-10',
-        };
+        const user = normalizedDemoUsers.find((u) => u.login_id === login_id) || normalizedDemoUsers[0];
         const mockResponse: AuthResponse = {
           token: `mock_token_${user.id}_${Date.now()}`,
           token_type: 'Bearer',
@@ -489,7 +497,7 @@ export const api = {
     },
 
     async getMyToday(): Promise<TodayOverview> {
-      const user = getCurrentUser() || (demoUsers[0] as User);
+      const user = getCurrentUser() || normalizedDemoUsers[0];
       const scheduleSlots = await api.schedule.getTimetable(user.section || 'CSE-10');
       return {
         date: '2026-12-03',

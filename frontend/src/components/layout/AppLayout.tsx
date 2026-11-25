@@ -20,12 +20,18 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 
-interface NavItem {
+export interface NavItem {
   id: ViewTab;
   label: string;
   icon: React.ReactNode;
   badge?: number;
   badgeColor?: string;
+  badgeText?: string;
+}
+
+export interface NavGroup {
+  title: string;
+  items: NavItem[];
 }
 
 export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -60,7 +66,7 @@ export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children })
   };
 
   // Build role-based navigation groups
-  const getNavGroups = () => {
+  const getNavGroups = (): NavGroup[] => {
     if (role === 'faculty') {
       return [
         {

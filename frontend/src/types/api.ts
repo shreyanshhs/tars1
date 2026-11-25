@@ -10,6 +10,7 @@ export type Role = 'student' | 'faculty' | 'hod';
 
 export interface User {
   id: string;
+  user_id?: string;
   login_id: string;
   name: string;
   role: Role;
