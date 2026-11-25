@@ -1,0 +1,304 @@
+{
+  "_comment": "Edit names/data here, then rebuild with: python3 app/seed.py. Keep ids stable (F01..F08, S001.., H01).",
+  "timetable_seed": 7,
+  "periods": [
+    {
+      "period": 1,
+      "start": "09:00",
+      "end": "09:55"
+    },
+    {
+      "period": 2,
+      "start": "09:55",
+      "end": "10:50"
+    },
+    {
+      "period": 3,
+      "start": "11:05",
+      "end": "12:00"
+    },
+    {
+      "period": 4,
+      "start": "12:00",
+      "end": "12:55"
+    },
+    {
+      "period": 5,
+      "start": "13:45",
+      "end": "14:40"
+    },
+    {
+      "period": 6,
+      "start": "14:40",
+      "end": "15:35"
+    }
+  ],
+  "subjects": [
+    {
+      "code": "DS",
+      "name": "Data Structures",
+      "is_lab": false,
+      "hours_per_week": 5
+    },
+    {
+      "code": "MATH",
+      "name": "Engineering Maths",
+      "is_lab": false,
+      "hours_per_week": 5
+    },
+    {
+      "code": "DLD",
+      "name": "Digital Logic Design",
+      "is_lab": false,
+      "hours_per_week": 4
+    },
+    {
+      "code": "OOP",
+      "name": "OOP with Java",
+      "is_lab": false,
+      "hours_per_week": 4
+    },
+    {
+      "code": "COA",
+      "name": "Computer Organisation",
+      "is_lab": false,
+      "hours_per_week": 4
+    },
+    {
+      "code": "DSL",
+      "name": "Data Structures Lab",
+      "is_lab": true,
+      "hours_per_week": 2
+    }
+  ],
+  "faculty": [
+    {
+      "id": "F01",
+      "name": "Dr. Ananya Rao",
+      "subjects": [
+        "DS",
+        "DSL"
+      ]
+    },
+    {
+      "id": "F02",
+      "name": "Prof. Kiran Kumar",
+      "subjects": [
+        "DS",
+        "OOP"
+      ]
+    },
+    {
+      "id": "F03",
+      "name": "Dr. Meera Iyer",
+      "subjects": [
+        "MATH"
+      ]
+    },
+    {
+      "id": "F04",
+      "name": "Prof. Rahul Nair",
+      "subjects": [
+        "MATH",
+        "DLD"
+      ]
+    },
+    {
+      "id": "F05",
+      "name": "Dr. Sneha Patil",
+      "subjects": [
+        "DLD",
+        "COA"
+      ]
+    },
+    {
+      "id": "F06",
+      "name": "Prof. Arjun Shetty",
+      "subjects": [
+        "COA",
+        "OOP"
+      ]
+    },
+    {
+      "id": "F07",
+      "name": "Dr. Farah Khan",
+      "subjects": [
+        "OOP",
+        "DSL"
+      ]
+    },
+    {
+      "id": "F08",
+      "name": "Prof. Vikram Joshi",
+      "subjects": [
+        "DS",
+        "MATH"
+      ]
+    }
+  ],
+  "students": [
+    {
+      "id": "S001",
+      "name": "Shreyansh",
+      "section": "CSE-A",
+      "usn": "1AB25CS001"
+    },
+    {
+      "id": "S002",
+      "name": "Aditi",
+      "section": "CSE-B",
+      "usn": "1AB25CS002"
+    },
+    {
+      "id": "S003",
+      "name": "Rohan",
+      "section": "CSE-C",
+      "usn": "1AB25CS003"
+    }
+  ],
+  "hods": [
+    {
+      "id": "H01",
+      "name": "HOD (CSE)"
+    }
+  ],
+  "rooms": [
+    {
+      "id": "R101",
+      "name": "Room 101",
+      "kind": "classroom",
+      "capacity": 60
+    },
+    {
+      "id": "R102",
+      "name": "Room 102",
+      "kind": "classroom",
+      "capacity": 60
+    },
+    {
+      "id": "R103",
+      "name": "Room 103",
+      "kind": "classroom",
+      "capacity": 60
+    },
+    {
+      "id": "R104",
+      "name": "Room 104 (spare)",
+      "kind": "classroom",
+      "capacity": 60
+    },
+    {
+      "id": "LAB1",
+      "name": "DS Lab 1",
+      "kind": "lab",
+      "capacity": 40
+    },
+    {
+      "id": "LAB2",
+      "name": "DS Lab 2",
+      "kind": "lab",
+      "capacity": 40
+    },
+    {
+      "id": "HALL",
+      "name": "Main Auditorium",
+      "kind": "hall",
+      "capacity": 300
+    }
+  ],
+  "sections": {
+    "CSE-A": {
+      "home_room": "R101",
+      "teachers": {
+        "DS": "F01",
+        "MATH": "F03",
+        "DLD": "F05",
+        "OOP": "F02",
+        "COA": "F06",
+        "DSL": "F01"
+      }
+    },
+    "CSE-B": {
+      "home_room": "R102",
+      "teachers": {
+        "DS": "F02",
+        "MATH": "F04",
+        "DLD": "F05",
+        "OOP": "F07",
+        "COA": "F06",
+        "DSL": "F07"
+      }
+    },
+    "CSE-C": {
+      "home_room": "R103",
+      "teachers": {
+        "DS": "F08",
+        "MATH": "F03",
+        "DLD": "F04",
+        "OOP": "F06",
+        "COA": "F05",
+        "DSL": "F01"
+      }
+    }
+  },
+  "attendance": {
+    "CSE-A": {
+      "DS": 71,
+      "MATH": 82,
+      "DLD": 88,
+      "OOP": 79,
+      "COA": 74,
+      "DSL": 92
+    },
+    "CSE-B": {
+      "DS": 85,
+      "MATH": 69,
+      "DLD": 81,
+      "OOP": 90,
+      "COA": 77,
+      "DSL": 95
+    },
+    "CSE-C": {
+      "DS": 78,
+      "MATH": 80,
+      "DLD": 72,
+      "OOP": 86,
+      "COA": 83,
+      "DSL": 89
+    }
+  },
+  "events": [
+    {
+      "title": "CyberSec Workshop: Intro to CTFs",
+      "org": "CyberSec Student Chapter",
+      "venue": "Main Auditorium",
+      "day": "WED",
+      "start": "14:00",
+      "end": "16:00"
+    },
+    {
+      "title": "Startup Pitch Night",
+      "org": "Tech Park Innovation Hub",
+      "venue": "Seminar Hall",
+      "day": "THU",
+      "start": "16:00",
+      "end": "18:00"
+    },
+    {
+      "title": "Placement Talk: Product Companies",
+      "org": "Campus Career Cell",
+      "venue": "Main Auditorium",
+      "day": "FRI",
+      "start": "11:05",
+      "end": "12:55"
+    }
+  ],
+  "demo": {
+    "absent_faculty": "F01",
+    "substitute": "F08",
+    "student": "S001",
+    "day": "MON",
+    "section": "CSE-A",
+    "subject": "DS"
+  }
+}

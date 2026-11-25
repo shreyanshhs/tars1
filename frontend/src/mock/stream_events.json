@@ -1,0 +1,126 @@
+[
+  {
+    "event": "agent_step",
+    "data": {
+      "decision_id": 1,
+      "step": "perceive",
+      "phase": "signal",
+      "text": "Dr. Ananya Rao absent MON: 2 slots affected (CSE-A P1 DSL, P2 DS)",
+      "ts": "2026-11-25T10:42:01"
+    }
+  },
+  {
+    "event": "agent_step",
+    "data": {
+      "decision_id": 1,
+      "step": "tool_call",
+      "phase": "evaluate",
+      "text": "get_attendance(CSE-A, DS) -> 71%",
+      "ts": "2026-11-25T10:42:02"
+    }
+  },
+  {
+    "event": "agent_step",
+    "data": {
+      "decision_id": 1,
+      "step": "tool_call",
+      "phase": "match",
+      "text": "find_substitute(DS, MON P2) -> Prof. Vikram Joshi (load 5)",
+      "ts": "2026-11-25T10:42:03"
+    }
+  },
+  {
+    "event": "agent_step",
+    "data": {
+      "decision_id": 1,
+      "step": "reason",
+      "phase": "constraints",
+      "text": "Constraints OK: slot 23: CSE-A DS attendance 71% < 75%: cancel blocked, F08 can teach DS",
+      "ts": "2026-11-25T10:42:03"
+    }
+  },
+  {
+    "event": "agent_step",
+    "data": {
+      "decision_id": 1,
+      "step": "tool_call",
+      "phase": "resolve",
+      "text": "validate_clash(1 change(s)) -> OK, no section/faculty/room clash",
+      "ts": "2026-11-25T10:42:04"
+    }
+  },
+  {
+    "event": "agent_step",
+    "data": {
+      "decision_id": 1,
+      "step": "tool_call",
+      "phase": "dispatch",
+      "text": "commit_change(1 change(s)) -> ok",
+      "ts": "2026-11-25T10:42:04"
+    }
+  },
+  {
+    "event": "agent_step",
+    "data": {
+      "decision_id": 1,
+      "step": "act",
+      "phase": "dispatch",
+      "text": "Committed 1 change(s), sent 2 nudge(s): Data Structures on MON at 09:55 is now with Prof. Vikram Joshi, same room.",
+      "ts": "2026-11-25T10:42:04"
+    }
+  },
+  {
+    "event": "timetable_updated",
+    "data": {
+      "section": "CSE-A",
+      "slot_ids": [
+        1,
+        2
+      ]
+    }
+  },
+  {
+    "event": "nudge_created",
+    "data": {
+      "id": 3,
+      "user_id": "S001",
+      "kind": "replan",
+      "title": "TARS re-planned your day",
+      "body": "DS at 09:55 is now with Prof. Vikram Joshi.",
+      "created_at": "2026-11-25T10:42:05",
+      "read": false,
+      "snoozed_until": null,
+      "blocked": false
+    }
+  },
+  {
+    "event": "agent_step",
+    "data": {
+      "decision_id": 1,
+      "step": "act",
+      "phase": "dispatch",
+      "text": "Calendar: saving 1 event(s) in the background",
+      "ts": "2026-11-25T10:42:05"
+    }
+  },
+  {
+    "event": "agent_step",
+    "data": {
+      "decision_id": 1,
+      "step": "done",
+      "phase": "dispatch",
+      "text": "Decision #1: pending_ack",
+      "ts": "2026-11-25T10:42:06"
+    }
+  },
+  {
+    "event": "agent_step",
+    "data": {
+      "decision_id": 1,
+      "step": "act",
+      "phase": "dispatch",
+      "text": "Calendar event created: DS (CSE-A): Prof. Vikram Joshi substituting, DS (CSE-A) MON 09:55",
+      "ts": "2026-11-25T10:42:07"
+    }
+  }
+]

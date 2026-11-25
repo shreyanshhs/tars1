@@ -1,0 +1,46 @@
+{
+  "demo_mode": true,
+  "days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+  ],
+  "periods": [
+    {
+      "period": 1,
+      "start": "09:00",
+      "end": "09:55"
+    },
+    {
+      "period": 2,
+      "start": "09:55",
+      "end": "10:50"
+    },
+    {
+      "period": 3,
+      "start": "11:05",
+      "end": "12:00"
+    },
+    {
+      "period": 4,
+      "start": "12:00",
+      "end": "12:55"
+    },
+    {
+      "period": 5,
+      "start": "13:45",
+      "end": "14:40"
+    },
+    {
+      "period": 6,
+      "start": "14:40",
+      "end": "15:35"
+    }
+  ],
+  "incident_types": [
+    "absence",
+    "room_unavailable"
+  ]
+}

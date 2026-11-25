@@ -1,0 +1,12 @@
+{
+  "token": "mock-token-not-valid",
+  "token_type": "bearer",
+  "expires_at": "2026-11-25T22:42:00Z",
+  "user": {
+    "user_id": "S001",
+    "usn": "1AB25CS001",
+    "name": "Shreyansh",
+    "role": "student",
+    "section": "CSE-A"
+  }
+}

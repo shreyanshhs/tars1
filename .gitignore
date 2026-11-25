@@ -1,0 +1,42 @@
+# Local development & hackathon planning
+design/
+data/
+docs/
+old/
+*.zip
+*.bundle
+prompts/
+ai_context/
+*.md.local
+
+# Environments & credentials
+.env
+.env.local
+*.key
+credentials*.json
+service-account*.json
+
+# Dependencies & build artifacts
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.db
+*.sqlite3
+
+# Logs & test results
+*.log
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store

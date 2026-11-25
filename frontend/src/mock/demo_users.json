@@ -1,0 +1,77 @@
+[
+  {
+    "user_id": "S0274",
+    "login_id": "shreyansh",
+    "usn": "26UG1BYCS0274-T",
+    "name": "Shreyansh",
+    "role": "student",
+    "section": "CSE-10",
+    "department": "CSE"
+  },
+  {
+    "user_id": "F_CDB",
+    "login_id": "chaitra",
+    "usn": null,
+    "name": "Prof. Chaitra D B",
+    "role": "faculty",
+    "section": null,
+    "department": "CSE",
+    "designation": "Assistant Professor",
+    "code": "CDB"
+  },
+  {
+    "user_id": "F_GPL",
+    "login_id": "geetha",
+    "usn": null,
+    "name": "Mrs. Geetha P L",
+    "role": "faculty",
+    "section": null,
+    "department": "CSE",
+    "designation": "Assistant Professor",
+    "code": "GPL"
+  },
+  {
+    "user_id": "H_SKB",
+    "login_id": "surekha",
+    "usn": null,
+    "name": "Dr. Surekha K B",
+    "role": "hod",
+    "section": null,
+    "department": "CSE",
+    "designation": "Professor & Head of Department",
+    "code": "SKB"
+  },
+  {
+    "user_id": "F_UB",
+    "login_id": "udayabhanu",
+    "usn": null,
+    "name": "Dr. Udayabhanu",
+    "role": "faculty",
+    "section": null,
+    "department": "Chemistry",
+    "designation": "Associate Professor",
+    "code": "UB"
+  },
+  {
+    "user_id": "F_SDB",
+    "login_id": "shabeena",
+    "usn": null,
+    "name": "Mrs. Shabeena Lylath",
+    "role": "faculty",
+    "section": null,
+    "department": "CSE",
+    "designation": "Assistant Professor",
+    "code": "SDB"
+  },
+  {
+    "user_id": "F_SMP",
+    "login_id": "matheen",
+    "usn": null,
+    "name": "Mr. Syed Matheen Pasha",
+    "role": "faculty",
+    "section": null,
+    "department": "CSE",
+    "designation": "Assistant Professor",
+    "code": "SMP"
+  }
+]

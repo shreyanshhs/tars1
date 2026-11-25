@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "created_at": "2026-11-25T10:42:00",
+    "trigger": "absence",
+    "summary": "Dr. Ananya Rao absent: CSE-A DS (MON P2) reassigned to Prof. Vikram Joshi in R101",
+    "reasoning": "CSE-A DS attendance is 71% (<75%), so cancelling was rejected. Prof. Joshi teaches DS, is free MON P2 and has the lowest weekly load (5).",
+    "affected_slot_ids": [
+      1
+    ],
+    "status": "pending_ack",
+    "calendar_link": "https://calendar.example/mock-event"
+  }
+]

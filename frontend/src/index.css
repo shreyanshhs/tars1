@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #4F46E5;
+  --color-on-primary: #FFFFFF;
+  --color-primary-hover: #4338CA;
+  --color-primary-soft: #EEF2FF;
+  --color-on-primary-soft: #3730A3;
+  --color-sidebar: #0F172A;
+  --color-on-sidebar: #F8FAFC;
+  --color-sidebar-muted: #94A3B8;
+  --color-sidebar-surface: #1E293B;
+  --color-sidebar-border: #334155;
+  --color-background: #F8FAFC;
+  --color-on-background: #0F172A;
+  --color-surface: #F8FAFC;
+  --color-surface-container-lowest: #FFFFFF;
+  --color-surface-container-low: #F8FAFC;
+  --color-surface-container: #F1F5F9;
+  --color-surface-container-high: #E2E8F0;
+  --color-on-surface: #0F172A;
+  --color-on-surface-variant: #475569;
+  --color-on-surface-muted: #64748B;
+  --color-outline: #CBD5E1;
+  --color-outline-variant: #E2E8F0;
+  --color-status-done: #15803D;
+  --color-status-done-bg: #DCFCE7;
+  --color-status-done-border: #BBF7D0;
+  --color-status-waiting: #B45309;
+  --color-status-waiting-bg: #FEF3C7;
+  --color-status-waiting-border: #FDE68A;
+  --color-status-attention: #B91C1C;
+  --color-status-attention-bg: #FEE2E2;
+  --color-status-attention-border: #FECACA;
+  --color-status-active: #4338CA;
+  --color-status-active-bg: #EEF2FF;
+  --color-status-active-border: #C7D2FE;
+  --color-subject-python-bg: #EEF2FF;
+  --color-subject-python-border: #C7D2FE;
+  --color-subject-python-text: #3730A3;
+  --color-subject-ai-bg: #F5F3FF;
+  --color-subject-ai-border: #DDD6FE;
+  --color-subject-ai-text: #5B21B6;
+  --color-subject-math-bg: #EFF6FF;
+  --color-subject-math-border: #BFDBFE;
+  --color-subject-math-text: #1E40AF;
+  --color-subject-chem-bg: #F0FDFA;
+  --color-subject-chem-border: #99F6E4;
+  --color-subject-chem-text: #115E59;
+  --color-subject-esc-bg: #F8FAFC;
+  --color-subject-esc-border: #E2E8F0;
+  --color-subject-esc-text: #334155;
+  --color-subject-other-bg: #FFFBEB;
+  --color-subject-other-border: #FDE68A;
+  --color-subject-other-text: #92400E;
+}
+
+@layer base {
+  body {
+    background-color: #F8FAFC;
+    color: #0F172A;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Material Symbols font alignment helper */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+  vertical-align: middle;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

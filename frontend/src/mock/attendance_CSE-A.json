@@ -1,0 +1,26 @@
+[
+  {
+    "subject_code": "DS",
+    "percent": 71
+  },
+  {
+    "subject_code": "MATH",
+    "percent": 82
+  },
+  {
+    "subject_code": "DLD",
+    "percent": 88
+  },
+  {
+    "subject_code": "OOP",
+    "percent": 79
+  },
+  {
+    "subject_code": "COA",
+    "percent": 74
+  },
+  {
+    "subject_code": "DSL",
+    "percent": 92
+  }
+]

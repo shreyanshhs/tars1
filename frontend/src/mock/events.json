@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1,
+    "title": "CyberSec Workshop: Intro to CTFs",
+    "org": "CyberSec Student Chapter",
+    "venue": "Main Auditorium",
+    "day": "WED",
+    "start": "14:00",
+    "end": "16:00",
+    "clashes_with": [],
+    "rsvp": false,
+    "rsvp_count": 0
+  },
+  {
+    "id": 2,
+    "title": "Startup Pitch Night",
+    "org": "Tech Park Innovation Hub",
+    "venue": "Seminar Hall",
+    "day": "THU",
+    "start": "16:00",
+    "end": "18:00",
+    "clashes_with": [],
+    "rsvp": false,
+    "rsvp_count": 0
+  },
+  {
+    "id": 3,
+    "title": "Placement Talk: Product Companies",
+    "org": "Campus Career Cell",
+    "venue": "Main Auditorium",
+    "day": "FRI",
+    "start": "11:05",
+    "end": "12:55",
+    "clashes_with": [],
+    "rsvp": false,
+    "rsvp_count": 0
+  }
+]
