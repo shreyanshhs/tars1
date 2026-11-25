@@ -1,322 +1,208 @@
-import React, { useState } from 'react';
-import { useTars } from '../../context/TarsContext';
-import type { ViewTab, Role } from '../../types/tars';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
-  Home,
-  Inbox,
-  Calendar,
-  CalendarDays,
-  FileText,
-  Award,
-  Sparkles,
-  BarChart3,
-  CheckSquare,
-  School,
-  Clock,
-  HelpCircle,
-  Settings,
-  ChevronUp,
-  UserCheck,
-  CheckCircle2,
+  Award, BarChart3, Calendar, CalendarDays, CheckCircle2, CheckSquare, ChevronDown,
+  ChevronRight, FileText, Home, Inbox, Menu, School, Sparkles, UserCheck, X,
 } from 'lucide-react';
 
-interface NavItem {
-  id: ViewTab;
-  label: string;
-  icon: React.ReactNode;
-  badge?: number;
-  badgeColor?: string;
+import { useTars } from '../../context/TarsContext';
+import type { Role, ViewTab } from '../../types/tars';
+import './appLayout.css';
+
+const personas = {
+  student: { name: 'Shreyansh', roleLabel: 'Student', detail: 'Student · CSE-10', initials: 'SH' },
+  faculty: { name: 'Prof. Chaitra D B', roleLabel: 'Faculty', detail: 'Assistant Professor · AI/ML', initials: 'CD' },
+  hod: { name: 'Dr. Surekha K B', roleLabel: 'HOD', detail: 'Professor & HOD · CSE', initials: 'SK' },
+} satisfies Record<Role, { name: string; roleLabel: string; detail: string; initials: string }>;
+
+const items = {
+  home: { id: 'home', label: 'Home', icon: Home },
+  inbox: { id: 'inbox', label: 'Inbox', icon: Inbox },
+  schedule: { id: 'schedule', label: 'Schedule', icon: CalendarDays },
+  approvals: { id: 'approvals', label: 'Approvals', icon: CheckCircle2 },
+  leave: { id: 'leave', label: 'Leave', icon: FileText },
+  nptel: { id: 'nptel', label: 'NPTEL', icon: Award },
+  events: { id: 'events', label: 'Events', icon: Calendar },
+  activity: { id: 'activity', label: 'TARS activity', icon: Sparkles },
+  insights: { id: 'insights', label: 'Department', icon: BarChart3 },
+  classes: { id: 'classes', label: 'Classes', icon: School },
+  attendance: { id: 'attendance', label: 'Attendance', icon: CheckSquare },
+} satisfies Partial<Record<ViewTab, { id: ViewTab; label: string; icon: typeof Home }>>;
+
+type NavKey = keyof typeof items;
+type NavGroup = { label: string; pages: NavKey[] };
+
+function navigation(role: Role): NavGroup[] {
+  const staff = role !== 'student';
+  return [
+    { label: 'General', pages: role === 'hod' ? ['home', 'approvals', 'inbox', 'schedule'] : ['home', 'inbox', 'schedule'] },
+    { label: 'Requests', pages: staff ? ['leave', 'nptel', 'events'] : ['nptel', 'events'] },
+    ...(role === 'hod' ? [{ label: 'Insights', pages: ['activity', 'insights'] } satisfies NavGroup] : []),
+    { label: 'Coming soon', pages: ['classes', 'attendance'] },
+  ];
 }
 
-export const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { role, setRole, currentView, setCurrentView } = useTars();
-  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+// App.tsx currently renders these views. Staff home and workflow routes are
+// integrated by their owners when their screens are ready.
+const routedViews = new Set<ViewTab>(['today', 'nudges', 'schedule', 'nptel', 'events', 'admin']);
 
-  // Active persona based on role
-  const persona = {
-    student: {
-      name: 'Shreyansh',
-      title: 'Student · CSE-10',
-      initials: 'SH',
-      loginId: 'shreyansh',
-    },
-    faculty: {
-      name: 'Prof. Chaitra D B',
-      title: 'Assistant Professor · AI/ML',
-      initials: 'CD',
-      loginId: 'chaitra',
-    },
-    hod: {
-      name: 'Dr. Surekha K B',
-      title: 'Professor & HOD · CSE',
-      initials: 'SK',
-      loginId: 'surekha',
-    },
-  }[role] || {
-    name: 'Prof. Chaitra D B',
-    title: 'Assistant Professor',
-    initials: 'CD',
-    loginId: 'chaitra',
-  };
+function navKey(view: ViewTab): NavKey | undefined {
+  if (view === 'today') return 'home';
+  if (view === 'nudges') return 'inbox';
+  return Object.hasOwn(items, view) ? view as NavKey : undefined;
+}
 
-  // Build role-based navigation groups
-  const getNavGroups = () => {
-    if (role === 'faculty') {
-      return [
-        {
-          title: 'General',
-          items: [
-            { id: 'home' as ViewTab, label: 'Home', icon: <Home className="w-4 h-4" /> },
-            { id: 'inbox' as ViewTab, label: 'Inbox', icon: <Inbox className="w-4 h-4" />, badge: 3 },
-            { id: 'schedule' as ViewTab, label: 'Schedule', icon: <CalendarDays className="w-4 h-4" /> },
-          ],
-        },
-        {
-          title: 'Requests',
-          items: [
-            { id: 'leave' as ViewTab, label: 'Leave', icon: <FileText className="w-4 h-4" /> },
-            { id: 'nptel' as ViewTab, label: 'NPTEL', icon: <Award className="w-4 h-4" />, badge: 6 },
-            { id: 'events' as ViewTab, label: 'Events', icon: <Calendar className="w-4 h-4" /> },
-          ],
-        },
-        {
-          title: 'Coming soon',
-          items: [
-            { id: 'classes' as ViewTab, label: 'Classes', icon: <School className="w-4 h-4" />, badgeText: 'BETA' },
-            { id: 'attendance' as ViewTab, label: 'Attendance', icon: <CheckSquare className="w-4 h-4" />, badgeText: 'BETA' },
-          ],
-        },
-      ];
-    }
+function targetView(page: NavKey, role: Role): ViewTab {
+  if (page === 'home' && role === 'student') return 'today';
+  if (page === 'inbox') return 'nudges';
+  return page;
+}
 
-    if (role === 'hod') {
-      return [
-        {
-          title: 'General',
-          items: [
-            { id: 'home' as ViewTab, label: 'Home', icon: <Home className="w-4 h-4" /> },
-            { id: 'approvals' as ViewTab, label: 'Approvals', icon: <CheckCircle2 className="w-4 h-4" />, badge: 1, badgeColor: 'bg-amber-500' },
-            { id: 'inbox' as ViewTab, label: 'Inbox', icon: <Inbox className="w-4 h-4" />, badge: 3 },
-            { id: 'schedule' as ViewTab, label: 'Schedule', icon: <CalendarDays className="w-4 h-4" /> },
-          ],
-        },
-        {
-          title: 'Requests',
-          items: [
-            { id: 'leave' as ViewTab, label: 'Leave', icon: <FileText className="w-4 h-4" /> },
-            { id: 'nptel' as ViewTab, label: 'NPTEL', icon: <Award className="w-4 h-4" />, badge: 6 },
-            { id: 'events' as ViewTab, label: 'Events', icon: <Calendar className="w-4 h-4" /> },
-          ],
-        },
-        {
-          title: 'Insights',
-          items: [
-            { id: 'activity' as ViewTab, label: 'TARS activity', icon: <Sparkles className="w-4 h-4" /> },
-            { id: 'insights' as ViewTab, label: 'Department', icon: <BarChart3 className="w-4 h-4" /> },
-          ],
-        },
-        {
-          title: 'Coming soon',
-          items: [
-            { id: 'classes' as ViewTab, label: 'Classes', icon: <School className="w-4 h-4" />, badgeText: 'BETA' },
-            { id: 'attendance' as ViewTab, label: 'Attendance', icon: <CheckSquare className="w-4 h-4" />, badgeText: 'BETA' },
-          ],
-        },
-      ];
-    }
+function Brand() {
+  return <div className="tars-shell-brand"><span aria-hidden="true">T</span> TARS <small>· BMSIT CSE</small></div>;
+}
 
-    // Default: Student
-    return [
-      {
-        title: 'General',
-        items: [
-          { id: 'home' as ViewTab, label: 'Home', icon: <Home className="w-4 h-4" /> },
-          { id: 'inbox' as ViewTab, label: 'Inbox', icon: <Inbox className="w-4 h-4" />, badge: 1 },
-          { id: 'schedule' as ViewTab, label: 'Schedule', icon: <CalendarDays className="w-4 h-4" /> },
-        ],
-      },
-      {
-        title: 'Requests',
-        items: [
-          { id: 'nptel' as ViewTab, label: 'NPTEL', icon: <Award className="w-4 h-4" /> },
-          { id: 'events' as ViewTab, label: 'Events', icon: <Calendar className="w-4 h-4" /> },
-        ],
-      },
-      {
-        title: 'Coming soon',
-        items: [
-          { id: 'classes' as ViewTab, label: 'Classes', icon: <School className="w-4 h-4" />, badgeText: 'BETA' },
-          { id: 'attendance' as ViewTab, label: 'Attendance', icon: <CheckSquare className="w-4 h-4" />, badgeText: 'BETA' },
-        ],
-      },
-    ];
-  };
+function PersonaPicker({ role, onChange, panelId }: { role: Role; onChange: (role: Role) => void; panelId: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const profile = personas[role];
+  return <div className="tars-shell-persona" onKeyDown={event => {
+    if (event.key !== 'Escape' || !expanded) return;
+    event.preventDefault();
+    setExpanded(false);
+    trigger.current?.focus();
+  }}>
+    <button ref={trigger} type="button" className="tars-shell-persona-trigger" aria-expanded={expanded}
+      aria-controls={panelId} onClick={() => setExpanded(value => !value)}>
+      <span className="tars-shell-avatar" aria-hidden="true">{profile.initials}</span>
+      <span><strong>{profile.name}</strong><small>{profile.detail}</small></span>
+      <ChevronDown size={15} aria-hidden="true"/>
+    </button>
+    {expanded && <div className="tars-shell-persona-options" id={panelId} role="group" aria-label="Switch demo account">
+      {Object.entries(personas).map(([key, person]) => <button type="button" key={key}
+        aria-pressed={role === key}
+        onClick={() => { setExpanded(false); trigger.current?.focus(); onChange(key as Role); }}>
+        {person.name} ({person.roleLabel})
+        {role === key && <UserCheck size={15} aria-hidden="true"/>}
+      </button>)}
+    </div>}
+  </div>;
+}
 
-  const navGroups = getNavGroups();
-
-  const handleSwitchPersona = (newRole: Role) => {
-    setRole(newRole);
-    setUserDropdownOpen(false);
-    setCurrentView('home');
-  };
-
-  return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#F8FAFC] font-sans text-slate-800">
-      {/* Dark Navy Sidebar */}
-      <aside className="w-60 shrink-0 flex flex-col justify-between bg-[#0F172A] text-[#F8FAFC] border-r border-[#334155] px-3.5 py-4 z-20 select-none">
-        <div className="flex flex-col gap-5 overflow-y-auto pr-1">
-          {/* Workspace Switcher */}
-          <div className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg bg-[#1E293B] border border-[#334155]">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span className="inline-flex items-center justify-center w-7 h-7 rounded bg-[#4F46E5] text-white font-bold text-sm shrink-0">
-                T
-              </span>
-              <span className="font-semibold text-sm text-[#F8FAFC] truncate">
-                TARS · BMSIT CSE
-              </span>
-            </div>
-          </div>
-
-          {/* Navigation Groups */}
-          <nav aria-label="Primary navigation" className="flex flex-col gap-4">
-            {navGroups.map((group) => (
-              <div key={group.title} className="flex flex-col gap-1">
-                <p className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-                  {group.title}
-                </p>
-                {group.items.map((item: any) => {
-                  const isActive = currentView === item.id || (item.id === 'home' && currentView === 'today');
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setCurrentView(item.id)}
-                      className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        isActive
-                          ? 'bg-[#1E293B] text-white border border-[#334155]'
-                          : 'text-[#94A3B8] hover:bg-[#1E293B]/70 hover:text-[#F8FAFC]'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2.5 min-w-0">
-                        <span className={isActive ? 'text-[#818CF8]' : 'text-[#94A3B8]'}>
-                          {item.icon}
-                        </span>
-                        <span className="truncate">{item.label}</span>
-                      </span>
-
-                      {item.badge !== undefined && (
-                        <span
-                          className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-semibold text-white tabular-nums ${
-                            item.badgeColor || 'bg-[#4F46E5]'
-                          }`}
-                        >
-                          {item.badge}
-                        </span>
-                      )}
-
-                      {item.badgeText && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#1E293B] border border-[#334155] text-[#94A3B8]">
-                          {item.badgeText}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </nav>
-        </div>
-
-        {/* Bottom Sidebar Stack */}
-        <div className="flex flex-col gap-3 pt-3 border-t border-[#334155]">
-          {/* Time Saved Card */}
-          <div className="p-3 rounded-lg bg-[#1E293B] border border-[#334155] flex items-start gap-2.5">
-            <Clock className="w-4 h-4 text-[#818CF8] shrink-0 mt-0.5" />
-            <p className="text-xs text-[#F8FAFC] leading-snug">
-              TARS saved you <span className="font-semibold text-indigo-400">3 h</span> this week
-            </p>
-          </div>
-
-          {/* Help & Settings */}
-          <div className="flex flex-col gap-0.5">
-            <button
-              type="button"
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-[#94A3B8] hover:bg-[#1E293B] hover:text-[#F8FAFC] transition-colors"
-            >
-              <HelpCircle className="w-3.5 h-3.5" />
-              <span>Help & Docs</span>
-            </button>
-            <button
-              type="button"
-              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-[#94A3B8] hover:bg-[#1E293B] hover:text-[#F8FAFC] transition-colors"
-            >
-              <Settings className="w-3.5 h-3.5" />
-              <span>Settings</span>
-            </button>
-          </div>
-
-          {/* User Card & Demo Persona Switcher */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-              className="w-full flex items-center justify-between gap-2 px-2 py-2 rounded-lg bg-[#1E293B] border border-[#334155] hover:border-slate-500 transition-colors text-left"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#4F46E5] text-white font-bold text-xs shrink-0">
-                  {persona.initials}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-[#F8FAFC] truncate">{persona.name}</p>
-                  <p className="text-[11px] text-[#94A3B8] truncate">{persona.title}</p>
-                </div>
-              </div>
-              <ChevronUp className="w-3.5 h-3.5 text-[#94A3B8] shrink-0" />
-            </button>
-
-            {/* Persona Switcher Popover */}
-            {userDropdownOpen && (
-              <div className="absolute bottom-full left-0 right-0 mb-2 p-2 rounded-lg bg-[#1E293B] border border-[#334155] shadow-xl z-50 flex flex-col gap-1 text-xs">
-                <div className="px-2 py-1 text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">
-                  Switch Demo Account
-                </div>
-                <button
-                  onClick={() => handleSwitchPersona('faculty')}
-                  className={`w-full text-left px-2 py-1.5 rounded flex items-center justify-between ${
-                    role === 'faculty' ? 'bg-[#4F46E5] text-white font-semibold' : 'text-slate-300 hover:bg-[#334155]'
-                  }`}
-                >
-                  <span>Prof. Chaitra D B (Faculty)</span>
-                  {role === 'faculty' && <UserCheck className="w-3.5 h-3.5" />}
-                </button>
-                <button
-                  onClick={() => handleSwitchPersona('hod')}
-                  className={`w-full text-left px-2 py-1.5 rounded flex items-center justify-between ${
-                    role === 'hod' ? 'bg-[#4F46E5] text-white font-semibold' : 'text-slate-300 hover:bg-[#334155]'
-                  }`}
-                >
-                  <span>Dr. Surekha K B (HOD)</span>
-                  {role === 'hod' && <UserCheck className="w-3.5 h-3.5" />}
-                </button>
-                <button
-                  onClick={() => handleSwitchPersona('student')}
-                  className={`w-full text-left px-2 py-1.5 rounded flex items-center justify-between ${
-                    role === 'student' ? 'bg-[#4F46E5] text-white font-semibold' : 'text-slate-300 hover:bg-[#334155]'
-                  }`}
-                >
-                  <span>Shreyansh (Student · CSE-10)</span>
-                  {role === 'student' && <UserCheck className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Page Area */}
-      <main className="flex-1 overflow-y-auto bg-[#F8FAFC]">
-        {children}
-      </main>
+function SidebarContents({ role, groups, activePage, unreadNudgesCount, onNavigate, onRoleChange, onClose }: {
+  role: Role;
+  groups: NavGroup[];
+  activePage?: NavKey;
+  unreadNudgesCount: number;
+  onNavigate: (page: NavKey) => void;
+  onRoleChange: (role: Role) => void;
+  onClose?: () => void;
+}) {
+  const mobile = Boolean(onClose);
+  return <div className="tars-shell-sidebar-content">
+    <div className="tars-shell-sidebar-pages">
+      <div className="tars-shell-sidebar-heading"><Brand/>
+        {mobile && <button type="button" className="tars-shell-icon-button" aria-label="Close navigation" onClick={onClose}><X size={19}/></button>}
+      </div>
+      <nav aria-label={mobile ? 'All pages' : 'Primary navigation'} className="tars-shell-nav">
+        {groups.map(group => <div key={group.label} className="tars-shell-nav-group">
+          <p>{group.label}</p>
+          {group.pages.map(page => {
+            const { icon: Icon, label: itemLabel } = items[page];
+            return <button type="button" key={page} aria-current={activePage === page ? 'page' : undefined} onClick={() => onNavigate(page)}>
+              <Icon size={17} aria-hidden="true"/><span>{itemLabel}</span>
+              {page === 'inbox' && unreadNudgesCount > 0 && <span className="tars-shell-count" aria-label={`${unreadNudgesCount} unread`}>{unreadNudgesCount}</span>}
+            </button>;
+          })}
+        </div>)}
+      </nav>
     </div>
-  );
-};
+    <PersonaPicker role={role} onChange={onRoleChange} panelId={mobile ? 'mobile-personas' : 'desktop-personas'}/>
+  </div>;
+}
+
+export function AppLayout({ children }: { children: ReactNode }) {
+  const { role, setRole, currentView, setCurrentView, unreadNudgesCount } = useTars();
+  const drawer = useRef<HTMLDialogElement>(null);
+  const main = useRef<HTMLElement>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const groups = navigation(role);
+  const activePage = navKey(currentView);
+  const profile = personas[role];
+  const label = activePage ? items[activePage].label : currentView === 'admin' ? 'Admin' : 'Page';
+  const staffHome = activePage === 'home' && role !== 'student';
+  const isComingSoon = activePage === 'classes' || activePage === 'attendance';
+  const showContent = routedViews.has(currentView) && !staffHome;
+  const heading = staffHome ? `${profile.roleLabel} home` : label;
+
+  useEffect(() => {
+    document.title = `${heading} · TARS`;
+    main.current?.scrollTo({ top:0, left:0 });
+  }, [heading, role]);
+
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const closeOnDesktop = (event: MediaQueryListEvent) => {
+      if (event.matches) drawer.current?.close();
+    };
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => desktop.removeEventListener('change', closeOnDesktop);
+  }, []);
+
+  function goTo(page: NavKey) {
+    drawer.current?.close();
+    setCurrentView(targetView(page, role));
+  }
+
+  function switchRole(next: Role) {
+    drawer.current?.close();
+    if (next === role) return;
+    setRole(next);
+    setCurrentView(targetView('home', next));
+  }
+
+  function openDrawer() {
+    if (!drawer.current?.open) drawer.current?.showModal();
+    setDrawerOpen(true);
+  }
+
+  const sidebarProps = { role, groups, activePage, unreadNudgesCount, onNavigate:goTo, onRoleChange:switchRole };
+
+  return <div className="tars-shell">
+    <a className="tars-shell-skip" href="#tars-main">Skip to content</a>
+    <aside className="tars-shell-sidebar"><SidebarContents {...sidebarProps}/></aside>
+    <div className="tars-shell-body">
+      <header className="tars-shell-header">
+        <button className="tars-shell-mobile-menu tars-shell-icon-button" type="button" aria-label="Open navigation"
+          aria-controls="tars-navigation-drawer" aria-expanded={drawerOpen} onClick={openDrawer}><Menu size={21}/></button>
+        <div className="tars-shell-location"><span>{profile.roleLabel}</span><ChevronRight size={14} aria-hidden="true"/><strong>{heading}</strong></div>
+      </header>
+      <main className="tars-shell-main" id="tars-main" tabIndex={-1} ref={main}>
+        <div className={activePage === 'events' || activePage === 'nptel' ? 'tars-shell-content tars-shell-module' : 'tars-shell-content'}>
+          {showContent ? <Suspense fallback={<p className="tars-shell-fallback" role="status">Loading {heading}…</p>}>{children}</Suspense>
+            : <section className="tars-shell-fallback" aria-labelledby="tars-unavailable-title">
+              <h1 id="tars-unavailable-title">{heading}</h1>
+              <p>{isComingSoon ? 'This page is planned for a future release.' : 'This screen is awaiting integration in this demo.'}</p>
+              <button type="button" onClick={() => goTo('events')}>Go to Events</button>
+            </section>}
+        </div>
+      </main>
+      <nav className="tars-shell-bottom-nav" aria-label="Mobile navigation">
+        {(['home', 'inbox', 'schedule'] as const).map(page => {
+          const { icon: Icon, label: itemLabel } = items[page];
+          return <button type="button" key={page} aria-current={activePage === page ? 'page' : undefined} onClick={() => goTo(page)}>
+            <Icon size={19} aria-hidden="true"/>{itemLabel}
+          </button>;
+        })}
+        <button type="button" aria-controls="tars-navigation-drawer" aria-expanded={drawerOpen}
+          data-current={groups[1].pages.some(page => page === activePage)} onClick={openDrawer}>
+          <FileText size={19} aria-hidden="true"/>Requests
+        </button>
+      </nav>
+    </div>
+    <dialog className="tars-shell-drawer" id="tars-navigation-drawer" ref={drawer} aria-label="TARS navigation"
+      onClose={() => setDrawerOpen(false)} onClick={event => { if (event.target === event.currentTarget) event.currentTarget.close(); }}>
+      <SidebarContents {...sidebarProps} onClose={() => drawer.current?.close()}/>
+    </dialog>
+  </div>;
+}

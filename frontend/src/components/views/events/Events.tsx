@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Bookmark, CalendarDays, Check, Plus, Search, Sparkles } from 'lucide-react'
 import qrcode from './vendor/qrcode.mjs'
@@ -9,6 +9,9 @@ import './events.css'
 const filters = ['All', 'Clash-free', 'Saved', 'Registered'] as const
 type Filter = typeof filters[number]
 type Result = { event: CampusEvent; ticket: EventTicket; qr: string }
+
+// Keep demo events and tickets when the user visits another TARS screen.
+let eventSession = { list:events, saved:['cyber'], tickets:{} as Record<string, Result> }
 const fmtDate = (date: string) => new Intl.DateTimeFormat('en-GB', { day:'numeric', month:'short', timeZone:'UTC' }).format(new Date(date))
 const fmtTime = (time: string) => new Intl.DateTimeFormat('en-US', { hour:'numeric', minute:'2-digit',timeZone:'UTC' }).format(new Date('2000-01-01T'+time+'Z'))
 const formValue = (data: FormData, key: string) => String(data.get(key) ?? '').trim()
@@ -22,12 +25,14 @@ function Poster({ event }: { event: CampusEvent }) {
 }
 
 export default function Events({ canPost = false }: { canPost?: boolean }) {
-  const [list, setList] = useState(events)
-  const [saved, setSaved] = useState<string[]>(['cyber'])
-  const [tickets, setTickets] = useState<Record<string, Result>>({})
+  const [list, setList] = useState(() => eventSession.list)
+  const [saved, setSaved] = useState(() => eventSession.saved)
+  const [tickets, setTickets] = useState(() => eventSession.tickets)
+  useEffect(() => { eventSession = { list, saved, tickets } }, [list, saved, tickets])
   const [filter, setFilter] = useState<Filter>('All')
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
+  const [detail, setDetail] = useState<CampusEvent>()
   const [active, setActive] = useState<CampusEvent>()
   const [result, setResult] = useState<Result>()
   const [members, setMembers] = useState<string[]>([])
@@ -35,22 +40,37 @@ export default function Events({ canPost = false }: { canPost?: boolean }) {
   const [visiblePoster, setVisiblePoster] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const details = useRef<HTMLDialogElement>(null)
+  const draftPoster = useRef('')
   const registration = useRef<HTMLDialogElement>(null)
   const posting = useRef<HTMLDialogElement>(null)
   const success = useRef<HTMLDialogElement>(null)
-  const clash = active && clashesFor(active)[0]
+  const conflictLabels = active ? clashesFor(active).map(conflict => conflict.label) : []
+  const detailClashes = detail ? clashesFor(detail) : []
+  const agenda = list.filter(event => tickets[event.id]?.ticket.add_to_schedule || saved.includes(event.id))
+    .sort((a,b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start))
+  useEffect(() => () => {
+    if (draftPoster.current) URL.revokeObjectURL(draftPoster.current)
+  }, [])
   const visible = list.filter(event => {
     const matchesSearch = [event.title, event.organiser, event.venue].join(' ').toLowerCase().includes(search.trim().toLowerCase())
     return matchesSearch && (filter === 'All' || (filter === 'Clash-free' && !clashesFor(event).length)
       || (filter === 'Saved' && saved.includes(event.id)) || (filter === 'Registered' && Boolean(tickets[event.id])))
   })
 
+  function showDetails(event: CampusEvent) {
+    setDetail(event)
+    details.current?.showModal()
+  }
+
   function openEvent(event: CampusEvent) {
+    details.current?.close()
     if (tickets[event.id]) {
       setResult(tickets[event.id])
       success.current?.showModal()
       return
     }
+    registration.current?.querySelector('form')?.reset()
     setActive(event)
     setError('')
     setMembers([])
@@ -80,7 +100,7 @@ export default function Events({ canPost = false }: { canPost?: boolean }) {
     const payload: Registration = {
       event_id: active.id, phone: formValue(data,'phone'), team_name: formValue(data,'team_name'), members,
       tshirt: formValue(data,'tshirt'), note: formValue(data,'note'),
-      add_to_schedule: data.has('add_to_schedule'), request_permission: Boolean(clash) && data.has('request_permission'),
+      add_to_schedule: data.has('add_to_schedule'), request_permission: conflictLabels.length > 0 && data.has('request_permission'),
     }
     setBusy(true)
     setError('')
@@ -104,15 +124,21 @@ export default function Events({ canPost = false }: { canPost?: boolean }) {
     }
   }
 
-  async function loadPoster(file?: File) {
+  function resetPoster() {
+    if (draftPoster.current) URL.revokeObjectURL(draftPoster.current)
+    draftPoster.current = ''
+    setVisiblePoster('')
+  }
+
+  function loadPoster(file?: File) {
     if (!file) return
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 5_000_000) {
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || (file.size === 0 || file.size > 5_000_000)) {
       setError('Choose a PNG, JPEG or WebP poster under 5 MB.')
       return
     }
-    const payload = await file.arrayBuffer()
-    const imgUrl = URL.createObjectURL(new Blob([payload], { type:file.type }))
-    setVisiblePoster(imgUrl)
+    resetPoster()
+    draftPoster.current = URL.createObjectURL(file)
+    setVisiblePoster(draftPoster.current)
     setError('')
   }
 
@@ -132,6 +158,7 @@ export default function Events({ canPost = false }: { canPost?: boolean }) {
     setList(current => [{ id:crypto.randomUUID(), title, organiser, venue, date, start, endDate:date, end,
       category:formValue(data,'category') as Category, poster:visiblePoster,
       description:formValue(data,'description'), registeredCount:0 }, ...current])
+    draftPoster.current = ''
     setFilter('All')
     setSearch('')
     setStatus(`${title} published in demo.`)
@@ -143,7 +170,7 @@ export default function Events({ canPost = false }: { canPost?: boolean }) {
       <div><h1>Campus events</h1><p>TARS checks every event against your {student.section} timetable.</p></div>
       <div className="event-actions">
         <label className="event-search"><Search size={17}/><input value={search} onChange={e => setSearch(e.target.value)} aria-label="Search events" placeholder="Search events…"/></label>
-        {canPost && <button className="primary" onClick={() => { setVisiblePoster(''); setError(''); posting.current?.querySelector('form')?.reset(); posting.current?.showModal() }}><Plus size={17}/> Post an event</button>}
+        {canPost && <button className="primary" onClick={() => { resetPoster(); setError(''); posting.current?.querySelector('form')?.reset(); posting.current?.showModal() }}><Plus size={17}/> Post an event</button>}
       </div>
     </header>
     <nav className="event-tabs" aria-label="Event filters">{filters.map(tab => <button key={tab} aria-pressed={filter === tab} onClick={() => setFilter(tab)}>{tab}</button>)}</nav>
@@ -155,7 +182,7 @@ export default function Events({ canPost = false }: { canPost?: boolean }) {
           const clashes = clashesFor(event)
           const ticket = tickets[event.id]
           return <article key={event.id}><Poster event={event}/>
-            <div className="event-info"><h2>{event.title}</h2><p>{event.organiser}</p><p>{event.venue} · {fmtTime(event.start)}{event.date !== event.endDate ? ' · 24 hrs' : ''}</p>
+            <div className="event-info"><h2><button className="event-detail-link" onClick={() => showDetails(event)}>{event.title}</button></h2><p>{event.organiser}</p><p>{event.venue} · {fmtTime(event.start)}{event.date !== event.endDate ? ' · 24 hrs' : ''}</p>
               <span className={clashes.length ? 'clash' : 'clear'}>{clashes.length ? (ticket?.ticket.request_permission ? 'Attendance permission requested (demo)' : `Clashes with ${clashes[0].label}`) : 'No timetable clash'}</span></div>
             <div className="event-card-footer"><small>{event.registeredCount + Number(Boolean(ticket))} registered</small>
               <button className="icon" aria-label={saved.includes(event.id) ? 'Remove bookmark' : 'Bookmark event'} aria-pressed={saved.includes(event.id)} onClick={() => setSaved(current => current.includes(event.id) ? current.filter(id => id !== event.id) : [...current,event.id])}><Bookmark size={17} fill={saved.includes(event.id) ? 'currentColor' : 'none'}/></button>
@@ -164,14 +191,30 @@ export default function Events({ canPost = false }: { canPost?: boolean }) {
         })}
       </section>
       <aside className="event-week"><section><h2><CalendarDays size={17}/> Your week</h2>
-        {list.filter(event => tickets[event.id]?.ticket.add_to_schedule || saved.includes(event.id)).slice(0,4).map(event => <p key={event.id}><b>{fmtDate(event.date)}</b> · {event.title}</p>)}
-        {!list.some(event => tickets[event.id]?.ticket.add_to_schedule || saved.includes(event.id)) && <p>Saved and scheduled events appear here.</p>}
+        {agenda.slice(0,4).map(event => <p key={event.id}><button className="event-detail-link" onClick={() => showDetails(event)}><b>{fmtDate(event.date)}</b> · {event.title}</button></p>)}
+        {!agenda.length && <p>Saved and scheduled events appear here.</p>}
       </section><section className="event-insight"><h2><Sparkles size={17}/> TARS insight</h2><p>{list.filter(event => !clashesFor(event).length).length} events fit your sample timetable.</p></section></aside>
     </div>
 
-    <dialog ref={registration} className="event-dialog" onCancel={e => { if (busy) e.preventDefault() }}>
+    <dialog ref={details} className="event-dialog" aria-labelledby="event-detail-heading">
+      {detail && <div className="registration-layout event-detail"><Poster event={detail}/>
+        <div className="event-detail-body">
+          <h2 id="event-detail-heading">{detail.title}</h2>
+          <p>{detail.organiser} · {detail.venue}</p>
+          <p>{fmtDate(detail.date)}, {fmtTime(detail.start)} to {detail.endDate !== detail.date && `${fmtDate(detail.endDate)}, `}{fmtTime(detail.end)}</p>
+          <p>{detail.description || 'No description provided.'}</p>
+          <div className={detailClashes.length ? 'clash' : 'clear'}>
+            {detailClashes.length ? `Clashes with ${detailClashes.map(clash => clash.label).join(', ')}` : 'No timetable clash'}
+          </div>
+          <footer><button onClick={() => details.current?.close()}>Close</button>
+            <button className="primary" onClick={() => openEvent(detail)}>{tickets[detail.id] ? 'View ticket' : 'Register'}</button></footer>
+        </div>
+      </div>}
+    </dialog>
+
+    <dialog ref={registration} className="event-dialog" aria-labelledby="event-registration-heading" onCancel={e => { if (busy) e.preventDefault() }}>
       {active && <div className="registration-layout"><Poster event={active}/><form key={active.id} onSubmit={register}>
-        <h2>Register for {active.title}</h2><p>{fmtDate(active.date)} · {active.venue}</p>
+        <h2 id="event-registration-heading">Register for {active.title}</h2><p>{fmtDate(active.date)} · {active.venue}</p>
         <div className="event-fields"><label>Full name<input readOnly value={student.name}/></label><label>USN<input readOnly value={student.usn}/></label>
           <label>Section<input readOnly value={student.section}/></label><label>Email<input readOnly value={student.email}/></label>
           <label>Phone<input name="phone" type="tel" pattern="[0-9]{10}" required placeholder="Phone number"/></label>
@@ -181,14 +224,14 @@ export default function Events({ canPost = false }: { canPost?: boolean }) {
         <label>T-shirt size<select name="tshirt"><option value="">Select size</option>{['S','M','L','XL'].map(size => <option key={size}>{size}</option>)}</select></label>
         <label>Note for the organisers<textarea name="note" rows={2} maxLength={500}/></label>
         <label className="event-check"><input type="checkbox" name="add_to_schedule" defaultChecked/> Add to my schedule</label>
-        {clash && <label className="event-check clash"><input type="checkbox" name="request_permission" defaultChecked/> Request attendance permission for {clash.label} (demo)</label>}
+        {conflictLabels.length > 0 && <label className="event-check clash"><input type="checkbox" name="request_permission" defaultChecked/> Request attendance permission for {conflictLabels.join(', ')} (demo)</label>}
         {error && <p role="alert" className="event-error">{error}</p>}
         <footer><button type="button" disabled={busy} onClick={() => registration.current?.close()}>Cancel</button><button className="primary" disabled={busy}>{busy ? 'Registering…' : 'Register'}</button></footer>
       </form></div>}
     </dialog>
 
-    <dialog ref={success} className="event-dialog ticket-dialog">
-      {result && <div className="ticket-content"><span className="ticket-check"><Check/></span><h2>You’re registered</h2><h3>{result.event.title}</h3>
+    <dialog ref={success} className="event-dialog ticket-dialog" aria-labelledby="event-ticket-heading">
+      {result && <div className="ticket-content"><span className="ticket-check"><Check/></span><h2 id="event-ticket-heading">You’re registered</h2><h3>{result.event.title}</h3>
         <p>{student.name} · {student.usn} · {student.section}</p><p>{fmtDate(result.event.date)} · {result.event.venue}</p>
         <img alt="Demo ticket QR code" src={result.qr} width="220" height="220"/>
         <p>Show this QR at the demo entry desk</p>
@@ -197,9 +240,9 @@ export default function Events({ canPost = false }: { canPost?: boolean }) {
       </div>}
     </dialog>
 
-    <dialog ref={posting} className="event-dialog post-drawer">
+    <dialog ref={posting} className="event-dialog post-drawer" aria-labelledby="event-post-heading" onClose={resetPoster}>
       <form onSubmit={publish}>
-        <h2>Post an event</h2><p>Add an event to the campus calendar.</p>
+        <h2 id="event-post-heading">Post an event</h2><p>Add an event to the campus calendar.</p>
         <label className="poster-upload" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void loadPoster(e.dataTransfer.files[0]) }}>
           {visiblePoster && <img alt="Poster preview" src={visiblePoster}/>}<span>Drop a poster here · 4:5 recommended</span>
           <input aria-label="Choose poster" type="file" accept="image/png,image/jpeg,image/webp" onChange={e => void loadPoster(e.target.files?.[0])}/>

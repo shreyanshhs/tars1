@@ -4,6 +4,7 @@ import { AppLayout } from './components/layout/AppLayout';
 import { TodayView } from './components/views/TodayView';
 import { NudgesView } from './components/views/NudgesView';
 import { EventsView } from './components/views/EventsView';
+import { NptelView } from './components/views/nptel/NptelView';
 import { ScheduleView } from './components/views/ScheduleView';
 import { AdminConsoleView } from './components/views/AdminConsoleView';
 
@@ -15,6 +16,8 @@ const ViewRouter: React.FC = () => {
       return <TodayView />;
     case 'nudges':
       return <NudgesView />;
+    case 'nptel':
+      return <NptelView />;
     case 'events':
       return <EventsView />;
     case 'schedule':

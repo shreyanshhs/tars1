@@ -63,3 +63,11 @@
 @media(max-width:1200px) { .events-layout { grid-template-columns:1fr; } .event-week { grid-template-columns:1fr 1fr; } }
 @media(max-width:720px) { .event-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .campus-events { padding:16px; } }
 @media(max-width:510px) { .event-grid,.event-week,.registration-layout { grid-template-columns:1fr; } .registration-layout > .event-poster { display:none; } }
+.campus-events .event-detail-link { display:inline; padding:0; border:0; background:transparent; font:inherit; white-space:normal; text-align:left; }
+.campus-events .event-detail-link:hover { color:#4338ca; text-decoration:underline; }
+.event-detail-body { display:grid; align-content:start; gap:12px; padding:22px; overflow-wrap:anywhere; }
+.event-detail-body .clash,.event-detail-body .clear { justify-self:start; }
+.event-actions { flex-wrap:wrap; }
+.event-info,.event-card-footer { overflow-wrap:anywhere; }
+.event-card-footer { flex-wrap:wrap; }
+.campus-events :is(.event-dialog,.event-tabs) button:focus-visible { outline:2px solid #4f46e5; outline-offset:2px; }

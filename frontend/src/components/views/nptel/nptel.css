@@ -1,0 +1,66 @@
+.tars-nptel { --nptel-indigo:#4f46e5; --nptel-border:#e2e8f0; --nptel-muted:#475569; color:#0f172a; min-width:0; max-width:1340px; margin:0 auto; padding:28px; }
+.tars-nptel h1 { font-size:clamp(24px, 3vw, 32px); font-weight:700; letter-spacing:-.025em; }
+.tars-nptel h2 { font-size:16px; font-weight:700; }
+.tars-nptel p { color:var(--nptel-muted); font-size:14px; }
+.nptel-header,.nptel-summary { display:flex; align-items:center; gap:16px; margin-bottom:20px; }
+.nptel-header { justify-content:space-between; flex-wrap:wrap; }
+.tars-nptel button { display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:8px 12px; font-size:13px; font-weight:600; border:1px solid var(--nptel-border); border-radius:8px; background:#fff; color:#334155; cursor:pointer; }
+.tars-nptel button:hover:not(:disabled) { filter:brightness(.97); }
+.tars-nptel button:disabled { opacity:.55; cursor:default; }
+.tars-nptel .nptel-primary { border-color:var(--nptel-indigo); background:var(--nptel-indigo); color:#fff; }
+.nptel-summary,.nptel-panel,.nptel-upload { border:1px solid var(--nptel-border); border-radius:16px; background:#fff; padding:16px; }
+.nptel-summary { flex-wrap:wrap; background:#eef2ff; border-color:#c7d2fe; }
+.nptel-summary-copy { flex:1; min-width:170px; }
+.nptel-summary-copy strong { display:block; margin-top:4px; }
+.nptel-progress { width:72px; height:72px; flex:none; border-radius:50%; padding:7px; display:grid; place-items:center; }
+.nptel-progress span { width:100%; height:100%; display:grid; place-items:center; background:#fff; border-radius:50%; color:#3730a3; font-weight:700; }
+.nptel-steps { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); padding:0; margin:0 0 20px; list-style:none; gap:5px; }
+.nptel-steps li { display:flex; align-items:center; gap:6px; color:var(--nptel-muted); font-size:12px; }
+.nptel-steps li span,.nptel-steps li svg { flex:none; display:grid; place-items:center; width:23px; height:23px; border-radius:50%; background:#e2e8f0; }
+.nptel-steps li[data-done=true] svg { padding:4px; background:#dcfce7; color:#166534; }
+.nptel-dashboard { display:grid; grid-template-columns:minmax(0,1fr) minmax(205px,245px); gap:16px; align-items:start; }
+.nptel-panel { min-width:0; }
+.nptel-tabs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+.nptel-tabs button { text-transform:capitalize; }
+.nptel-tabs button[aria-pressed=true] { color:#4338ca; border-color:#c7d2fe; background:#eef2ff; }
+.nptel-table-scroll { overflow:auto; max-height:430px; }
+.nptel-panel table { width:100%; font-size:13px; border-collapse:collapse; }
+.nptel-panel td,.nptel-panel th { padding:10px 8px; text-align:left; border-bottom:1px solid var(--nptel-border); }
+.nptel-panel th { position:sticky; top:0; background:#f8fafc; color:var(--nptel-muted); white-space:nowrap; }
+.nptel-panel td:nth-child(2) { white-space:nowrap; }
+.nptel-panel td small { display:block; color:#92400e; min-width:115px; }
+.nptel-panel td button { min-width:110px; }
+.nptel-status { display:inline-block; font-weight:600; text-transform:capitalize; font-size:12px; padding:3px 8px; border-radius:999px; background:#f1f5f9; color:#475569; }
+.nptel-status[data-status=verified] { background:#dcfce7; color:#166534; }
+.nptel-status[data-status=flagged] { background:#fef3c7; color:#92400e; }
+.nptel-section-summary { display:grid; gap:12px; }
+.nptel-section span { display:flex; gap:6px; justify-content:space-between; font-size:13px; }
+.nptel-section progress { appearance:none; display:block; width:100%; height:8px; margin-top:6px; border:0; border-radius:999px; background:#e2e8f0; overflow:hidden; }
+.nptel-section progress::-webkit-progress-bar { background:#e2e8f0; }
+.nptel-section progress::-webkit-progress-value { background:var(--nptel-indigo); }
+.nptel-section progress::-moz-progress-bar { background:var(--nptel-indigo); }
+.nptel-feedback,.nptel-error { margin-top:10px; }
+.tars-nptel .nptel-error { color:#b91c1c; }
+.nptel-field { display:grid; gap:5px; margin-bottom:12px; font-weight:600; font-size:13px; }
+.nptel-field select,.nptel-field input { width:100%; padding:8px; border:1px solid var(--nptel-border); border-radius:8px; background:#fff; }
+.nptel-dialog { margin:auto; width:min(440px,calc(100% - 24px)); padding:20px; border:1px solid var(--nptel-border); border-radius:16px; background:#fff; }
+.nptel-dialog::backdrop { background:#0f172a80; }
+.nptel-dialog h2 { margin-bottom:14px; }
+.nptel-upload footer,.nptel-dialog footer { display:flex; justify-content:flex-end; gap:8px; }
+.nptel-student { max-width:560px; }
+.nptel-upload { display:grid; gap:14px; }
+.nptel-drop { position:relative; display:grid; justify-items:center; gap:6px; padding:26px 12px; color:#4338ca; border:1px dashed #a5b4fc; border-radius:12px; background:#eef2ff; text-align:center; cursor:pointer; }
+.nptel-drop:focus-within { outline:2px solid var(--nptel-indigo); outline-offset:2px; }
+.nptel-drop span { color:var(--nptel-muted); font-size:13px; }
+.nptel-drop input { position:absolute; inset:0; opacity:0; width:100%; cursor:pointer; }
+.nptel-file,.nptel-result h2,.nptel-result dd { display:flex; align-items:center; gap:8px; }
+.nptel-file { border:1px solid var(--nptel-border); border-radius:8px; padding:7px 10px; font-size:13px; }
+.nptel-file span { flex:1; overflow-wrap:anywhere; }
+.nptel-result { padding:14px; border:1px solid #bbf7d0; border-radius:12px; background:#f0fdf4; }
+.nptel-result[data-status=flagged],.nptel-result[data-status=mismatch] { border-color:#fde68a; background:#fffbeb; }
+.nptel-result dl { display:grid; gap:7px; margin-top:10px; font-size:13px; }
+.nptel-result dl > div { display:grid; grid-template-columns:minmax(80px,.7fr) minmax(0,1.3fr); gap:8px; }
+.nptel-result dd { justify-content:space-between; margin:0; overflow-wrap:anywhere; }
+.nptel-result dd svg { flex:none; }
+@media(max-width:920px) { .nptel-dashboard { grid-template-columns:1fr; } }
+@media(max-width:550px) { .tars-nptel { padding:16px; } .nptel-steps { grid-template-columns:repeat(3,minmax(0,1fr)); row-gap:9px; } .nptel-summary,.nptel-panel,.nptel-upload { padding:12px; } }
