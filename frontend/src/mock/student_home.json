@@ -1,0 +1,28 @@
+{
+  "student": {
+    "id": "S0274",
+    "login_id": "shreyansh",
+    "name": "Shreyansh",
+    "usn": "26UG1BYCS0274-T",
+    "section": "CSE-10",
+    "semester": "1st Sem",
+    "room": "SJB-104"
+  },
+  "attendance_summary": [
+    { "subject_code": "1BCHECS102", "subject": "Chemistry", "percentage": 72, "status": "danger", "note": "Attend 3 more classes to reach 75%" },
+    { "subject_code": "1BPLC105B", "subject": "Python Programming", "percentage": 88, "status": "good", "note": "On track" },
+    { "subject_code": "1BAI103", "subject": "Intro to AI", "percentage": 82, "status": "good", "note": "On track" },
+    { "subject_code": "1BMATCS101", "subject": "Maths", "percentage": 90, "status": "good", "note": "Safe" },
+    { "subject_code": "1BESC104X", "subject": "ESC-I", "percentage": 85, "status": "good", "note": "Safe" }
+  ],
+  "upcoming_deadlines": [
+    { "title": "NPTEL Cloud Computing Certificate", "due_date": "30 Nov 2026", "status": "pending_upload" },
+    { "title": "IA2 Question Scrutiny", "due_date": "15 Dec 2026", "status": "scheduled" },
+    { "title": "Internal Assessment 2 (IA2)", "due_date": "21-24 Dec 2026", "status": "exam" }
+  ],
+  "tars_stats": {
+    "hours_saved_faculty": 14.5,
+    "substitutions_coordinated": 12,
+    "zero_conflict_guarantee": true
+  }
+}

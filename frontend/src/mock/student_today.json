@@ -1,0 +1,132 @@
+{
+  "date": "2026-11-26",
+  "day": "THU",
+  "now_time": "11:47 am",
+  "student": {
+    "id": "S0274",
+    "login_id": "shreyansh",
+    "name": "Shreyansh",
+    "usn": "26UG1BYCS0274-T",
+    "section": "CSE-10",
+    "semester": "1st Sem",
+    "department": "CSE",
+    "room": "SJB-104"
+  },
+  "current_period": {
+    "id": 119,
+    "period": "4",
+    "start": "11:35",
+    "end": "12:30",
+    "time": "11:35 - 12:30",
+    "subject_code": "1BAI103",
+    "subject_name": "Intro to AI",
+    "subject_type": "ai",
+    "room": "SJB-104",
+    "faculty": "Mr. Syed Matheen Pasha",
+    "original_faculty": "Prof. Chaitra D B",
+    "changed": true,
+    "substitute": "Mr. Syed Matheen Pasha",
+    "change_note": "Covered by Mr. Syed Matheen Pasha (TARS approved)",
+    "status": "changed",
+    "progress_percent": 22
+  },
+  "timeline": [
+    {
+      "id": 116,
+      "period": "1",
+      "time": "8:30 - 9:25",
+      "subject_code": "1BCHECS102",
+      "subject_name": "Chemistry",
+      "subject_type": "chem",
+      "room": "SJB-104",
+      "faculty": "Dr. Udayabhanu",
+      "status": "completed"
+    },
+    {
+      "id": 117,
+      "period": "2",
+      "time": "9:25 - 10:20",
+      "subject_code": "1BIC107",
+      "subject_name": "Constitution",
+      "subject_type": "english",
+      "room": "SJB-104",
+      "faculty": "Prof. Ramesh",
+      "status": "completed"
+    },
+    {
+      "id": 118,
+      "period": "3",
+      "time": "10:40 - 11:35",
+      "subject_code": "MAT-TP",
+      "subject_name": "Maths · MATLAB",
+      "subject_type": "maths",
+      "room": "Shakuntala Devi lab",
+      "faculty": "Dr. Sreegowrav",
+      "is_lab": true,
+      "status": "completed"
+    },
+    {
+      "id": 119,
+      "period": "4",
+      "time": "11:35 - 12:30",
+      "subject_code": "1BAI103",
+      "subject_name": "Intro to AI",
+      "subject_type": "ai",
+      "room": "SJB-104",
+      "faculty": "Mr. Syed Matheen Pasha",
+      "original_faculty": "Prof. Chaitra D B",
+      "changed": true,
+      "substitute": "Mr. Syed Matheen Pasha",
+      "status": "active"
+    },
+    {
+      "id": 120,
+      "period": "5",
+      "time": "12:30 - 1:25",
+      "subject_code": "1BPLC105B",
+      "subject_name": "Python Theory",
+      "subject_type": "python",
+      "room": "SJB-104",
+      "faculty": "Mrs. Geetha P L",
+      "status": "upcoming"
+    },
+    {
+      "id": 121,
+      "period": "6-7",
+      "time": "2:20 - 4:10",
+      "subject_code": "PLC LAB",
+      "subject_name": "Python lab",
+      "subject_type": "python",
+      "room": "511C",
+      "faculty": "Mrs. Geetha P L",
+      "original_faculty": "Prof. Chaitra D B",
+      "changed": true,
+      "substitute": "Mrs. Geetha P L",
+      "is_lab": true,
+      "status": "upcoming"
+    }
+  ],
+  "tars_brief": {
+    "title": "TARS Brief",
+    "message": "Prof. Chaitra D B is on approved casual leave today. Intro to AI (P4) is taken by Mr. Syed Matheen Pasha. Python Lab (P6-P7) in 511C is taken by Mrs. Geetha P L.",
+    "time_saved_hours": 3.2
+  },
+  "needs_you": {
+    "title": "Attendance Alert",
+    "subject": "Chemistry of Smart Materials",
+    "current_pct": 72,
+    "target_pct": 75,
+    "classes_needed": 3,
+    "note": "Attend 3 more consecutive classes to reach the safe 75% eligibility threshold before IA2 exams."
+  },
+  "free_time_events": [
+    {
+      "id": "ev_01",
+      "title": "HackSphere 2026 Orientation",
+      "time": "4:15 PM - 5:30 PM",
+      "venue": "Sir MV Auditorium",
+      "clash_free": true,
+      "registered": false
+    }
+  ]
+}

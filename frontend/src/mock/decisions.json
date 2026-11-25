@@ -1,14 +1,147 @@
 [
   {
-    "id": 1,
-    "created_at": "2026-11-25T10:42:00",
-    "trigger": "absence",
-    "summary": "Dr. Ananya Rao absent: CSE-A DS (MON P2) reassigned to Prof. Vikram Joshi in R101",
-    "reasoning": "CSE-A DS attendance is 71% (<75%), so cancelling was rejected. Prof. Joshi teaches DS, is free MON P2 and has the lowest weekly load (5).",
-    "affected_slot_ids": [
-      1
+    "id": "dec_001",
+    "created_at": "2026-11-26T10:42:00Z",
+    "summary": "Prof. Chaitra D B leave: CSE-10 Intro to AI (Thu P4) assigned to Mr. Syed Matheen Pasha; Python Lab (Thu P6-P7) assigned to Mrs. Geetha P L",
+    "status": "committed",
+    "outcomes": [
+      "Intro to AI (P4) covered by Mr. Syed Matheen Pasha (free, qualified)",
+      "Python Lab (P6-P7) covered by Mrs. Geetha P L (co-faculty, free)",
+      "Zero timetable, faculty, or room clashes created"
     ],
-    "status": "pending_ack",
-    "calendar_link": "https://calendar.example/mock-event"
+    "why": [
+      "Mrs. Geetha P L co-teaches CSE-10 Python lab every Thursday, minimizing student instructional disruption.",
+      "Mrs. Shabeena Lylath was queried first for Intro to AI but declined due to prior Web Lab commitment.",
+      "Mr. Syed Matheen Pasha has lowest current weekly load (11/18 units) and verified subject proficiency."
+    ],
+    "options": [
+      {
+        "teacher_id": "F_GPL",
+        "teacher_name": "Mrs. Geetha P L",
+        "free": true,
+        "can_teach": true,
+        "load": 13,
+        "result": "accepted"
+      },
+      {
+        "teacher_id": "F_SDB",
+        "teacher_name": "Mrs. Shabeena Lylath",
+        "free": false,
+        "can_teach": true,
+        "load": 14,
+        "result": "declined",
+        "rejection_reason": "Timetable clash with 5th Sem Web Lab (BCSL504)"
+      },
+      {
+        "teacher_id": "F_SMP",
+        "teacher_name": "Mr. Syed Matheen Pasha",
+        "free": true,
+        "can_teach": true,
+        "load": 11,
+        "result": "accepted"
+      }
+    ],
+    "rules": [
+      {
+        "name": "No double-booking for sections or faculty",
+        "ok": true,
+        "detail": "Verified across sections CSE-8 to CSE-12"
+      },
+      {
+        "name": "Respect 1st-year lunch break (1:25 PM - 2:20 PM)",
+        "ok": true,
+        "detail": "P5 (12:30 - 1:25 PM) preserved as active class slot"
+      },
+      {
+        "name": "Preserve lab 2-hour consecutive block integrity",
+        "ok": true,
+        "detail": "P6-P7 in Sir CV Raman 511C kept intact"
+      },
+      {
+        "name": "Teacher on leave never assigned on leave day",
+        "ok": true,
+        "detail": "Prof. Chaitra D B marked off-duty all day"
+      },
+      {
+        "name": "Order of attempts: substitute → reschedule → cancel",
+        "ok": true,
+        "detail": "Successful substitution found; cancel not required"
+      }
+    ],
+    "steps": [
+      {
+        "at": "10:41:02",
+        "text": "Perceived leave request: Prof. Chaitra D B (Casual Leave, Thu 26 Nov)."
+      },
+      {
+        "at": "10:41:05",
+        "text": "Queried BMSIT timetable database: 2 affected slots identified in CSE-10."
+      },
+      {
+        "at": "10:41:10",
+        "text": "Co-faculty priority lookup: Mrs. Geetha P L identified for P6-P7 Python Lab."
+      },
+      {
+        "at": "10:42:15",
+        "text": "Mrs. Geetha P L accepted cover request for Python Lab (511C)."
+      },
+      {
+        "at": "10:42:30",
+        "text": "Candidate evaluation for P4 Intro to AI: Mrs. Shabeena Lylath declined (lab clash)."
+      },
+      {
+        "at": "10:43:00",
+        "text": "Fallback candidate Mr. Syed Matheen Pasha queried; accepted cover request."
+      },
+      {
+        "at": "10:44:00",
+        "text": "Programmatic clash validator verified resolution: 0 errors, lunch preserved."
+      },
+      {
+        "at": "10:45:00",
+        "text": "Consolidated single approval card dispatched to HOD Dr. Surekha K B."
+      },
+      {
+        "at": "10:46:12",
+        "text": "Dr. Surekha K B approved. Timetable committed; CSE-10 students notified."
+      }
+    ],
+    "tool_calls": [
+      {
+        "name": "get_timetable",
+        "arguments": { "faculty_id": "F_CDB", "date": "2026-11-26" },
+        "result": { "slots": [119, 121] }
+      },
+      {
+        "name": "find_substitutes",
+        "arguments": { "slot_id": 121, "subject": "PLC LAB", "type": "lab" },
+        "result": { "co_faculty": ["F_GPL"], "candidates": ["F_SDB", "F_SMP"] }
+      },
+      {
+        "name": "send_request",
+        "arguments": { "to": "F_GPL", "slot_id": 121 },
+        "result": { "status": "accepted" }
+      },
+      {
+        "name": "send_request",
+        "arguments": { "to": "F_SDB", "slot_id": 119 },
+        "result": { "status": "declined", "reason": "BCSL504 Lab clash" }
+      },
+      {
+        "name": "send_request",
+        "arguments": { "to": "F_SMP", "slot_id": 119 },
+        "result": { "status": "accepted" }
+      },
+      {
+        "name": "validate_changes",
+        "arguments": { "slots": [119, 121], "section": "CSE-10" },
+        "result": { "valid": true, "clashes": 0 }
+      },
+      {
+        "name": "submit_for_approval",
+        "arguments": { "hod_id": "H_SKB", "leave_id": "leave_cdb_001" },
+        "result": { "approval_id": "app_001", "status": "approved" }
+      }
+    ]
   }
 ]
