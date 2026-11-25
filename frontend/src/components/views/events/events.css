@@ -1,0 +1,65 @@
+.campus-events { --ink:#0f172a; --muted:#475569; --line:#e2e8f0; --primary:#4f46e5; color:var(--ink); flex:1; min-width:0; padding:28px; background:#f8fafc; }
+.campus-events *, .campus-events *::before, .campus-events *::after { box-sizing:border-box; }
+.campus-events h1,.campus-events h2,.campus-events h3,.campus-events p { margin:0; }
+.campus-events h1 { font-size:32px; letter-spacing:-.8px; margin-bottom:6px; }
+.campus-events p { color:var(--muted); }
+.campus-events button,.campus-events input,.campus-events select,.campus-events textarea { font:inherit; }
+.campus-events button,.campus-events a.outline { display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:8px 12px; border-radius:8px; border:1px solid var(--line); background:white; color:inherit; cursor:pointer; text-decoration:none; white-space:nowrap; font-size:13px; font-weight:600; }
+.campus-events button:hover,.campus-events a.outline:hover { filter:brightness(.96); }
+.campus-events button:disabled { opacity:.55; cursor:wait; }
+.campus-events .primary { background:var(--primary); border-color:var(--primary); color:white; }
+.events-header,.event-actions,.event-card-footer,.campus-events footer,.event-inline { display:flex; gap:10px; align-items:center; }
+.events-header { justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:18px; }
+.event-search { display:flex; align-items:center; background:white; border:1px solid var(--line); border-radius:8px; padding:0 9px; color:var(--muted); }
+.campus-events .event-search input { border:0; background:transparent; padding:8px; width:155px; }
+.event-tabs { display:inline-flex; flex-wrap:wrap; gap:4px; background:#f1f5f9; border:1px solid var(--line); border-radius:10px; padding:4px; margin-bottom:22px; }
+.event-tabs button { background:transparent; border-color:transparent; color:var(--muted); }
+.event-tabs button[aria-pressed=true] { background:white; border-color:var(--line); color:#4338ca; }
+.events-layout { display:grid; grid-template-columns:minmax(0,1fr) 218px; gap:22px; }
+.event-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; align-items:stretch; }
+.event-grid article,.event-week section { background:white; border:1px solid var(--line); border-radius:16px; padding:12px; }
+.event-grid article { display:flex; flex-direction:column; gap:12px; }
+.event-poster { aspect-ratio:4/5; position:relative; isolation:isolate; overflow:hidden; border-radius:12px; background:linear-gradient(145deg,#1e1b4b,#4f46e5); color:white; display:flex; align-items:center; justify-content:center; padding:20px; }
+.event-poster strong { max-width:100%; font-size:clamp(19px,2vw,32px); line-height:1.08; text-align:center; }
+.event-poster[data-category=Hackathon] { background:linear-gradient(145deg,#431407,#ea580c); }
+.event-poster[data-category=Careers] { background:linear-gradient(145deg,#082f49,#0369a1); }
+.event-poster[data-category=Culture] { background:linear-gradient(145deg,#500724,#be185d); }
+.event-poster[data-category=Workshop] { background:linear-gradient(145deg,#312e81,#7c3aed); }
+.event-poster[data-category=Club] { background:linear-gradient(145deg,#052e16,#15803d); }
+.event-poster img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:1; }
+.event-category,.event-date { position:absolute; top:10px; z-index:2; border-radius:7px; padding:5px 7px; background:#fff; color:var(--ink); font-size:11px; font-weight:700; }
+.event-category { left:10px; } .event-date { right:10px; }
+.event-info { display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
+.event-info h2 { font-size:15px; } .event-info p,.event-week p { font-size:13px; }
+.clash,.clear { font-size:12px; font-weight:600; border-radius:7px; padding:5px 8px; }
+.clash { background:#fef3c7; color:#92400e; } .clear { background:#dcfce7; color:#166534; }
+.event-card-footer { margin-top:auto; gap:6px; }
+.event-card-footer small { font-size:11px; margin-right:auto; color:var(--muted); } .event-card-footer .icon { padding:6px; color:#4338ca; }
+.event-week { display:grid; gap:14px; align-content:start; }
+.event-week h2 { display:flex; align-items:center; gap:7px; font-size:15px; margin-bottom:9px; }
+.event-week p + p { margin-top:9px; }
+.campus-events .event-insight { background:#eef2ff; color:#3730a3; border-radius:10px; padding:12px; }
+.campus-events .event-status { margin-bottom:14px; }
+.event-dialog { padding:0; width:min(820px,calc(100% - 26px)); max-height:calc(100dvh - 24px); border:1px solid var(--line); border-radius:16px; color:var(--ink); background:white; box-shadow:0 18px 55px #0f172a35; }
+.event-dialog::backdrop { background:#0f172a83; }
+.event-dialog h2 { font-size:22px; }
+.event-dialog form,.ticket-content { padding:22px; display:grid; gap:11px; }
+.event-dialog label { font-weight:600; font-size:13px; display:grid; gap:5px; }
+.event-dialog input:not([type=checkbox]),.event-dialog textarea,.event-dialog select { padding:8px; border:1px solid var(--line); border-radius:8px; min-width:0; width:100%; background:white; }
+.event-dialog input[readonly] { background:#f8fafc; }
+.event-dialog .event-check { display:flex; align-items:center; gap:8px; }
+.event-dialog footer { justify-content:flex-end; margin-top:6px; }
+.event-fields,.registration-layout { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.registration-layout { grid-template-columns: minmax(0, .75fr) minmax(0, 1.25fr); }
+.registration-layout > .event-poster { margin:16px 0 16px 16px; align-self:start; }
+.event-dialog .event-error { color:#b91c1c; }
+.event-dialog .member-chip { justify-self:start; background:#eef2ff; color:#4338ca; }
+.ticket-dialog { width:min(470px,calc(100% - 26px)); text-align:center; }
+.ticket-content { justify-items:center; }
+.ticket-check { display:grid; place-items:center; padding:9px; border-radius:50%; background:#dcfce7; color:#166534; }
+.post-drawer { inset:0 0 0 auto; margin:0; width:min(470px,100%); height:100dvh; max-height:100dvh; border-radius:16px 0 0 16px; }
+.poster-upload { background:#f8fafc; border:1px dashed #a5b4fc; border-radius:10px; text-align:center; padding:15px; }
+.poster-upload img { max-width:100%; max-height:150px; margin:auto; border-radius:6px; }
+@media(max-width:1200px) { .events-layout { grid-template-columns:1fr; } .event-week { grid-template-columns:1fr 1fr; } }
+@media(max-width:720px) { .event-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .campus-events { padding:16px; } }
+@media(max-width:510px) { .event-grid,.event-week,.registration-layout { grid-template-columns:1fr; } .registration-layout > .event-poster { display:none; } }
