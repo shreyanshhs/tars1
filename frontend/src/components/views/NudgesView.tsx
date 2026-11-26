@@ -1,244 +1,321 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTars } from '../../context/TarsContext';
-import {
-  Filter,
-  Share2,
-  MoreVertical,
-  Calendar,
-  CheckCircle2,
-  RotateCcw,
-  Info,
-} from 'lucide-react';
 
 export const NudgesView: React.FC = () => {
-  const { nudges, selectedNudgeId, setSelectedNudgeId, handleNudgeAction } = useTars();
-  const [filterActive, setFilterActive] = useState(false);
-  const [isReevaluating, setIsReevaluating] = useState(false);
+  const { nudges, selectedNudgeId, setSelectedNudgeId, handleNudgeAction, setCurrentView, role, activeFacultyId } = useTars();
+  const [activeFilter, setActiveFilter] = useState<'all' | 'needs_action' | 'updates'>('all');
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
-  const selectedNudge = nudges.find((n) => n.id === selectedNudgeId) || nudges[0];
+  // Authenticated user ID for demo-level frontend isolation
+  const userId = role === 'hod' ? 'H_SKB' : role === 'student' ? 'S0000' : (activeFacultyId || 'F_CDB');
 
-  const triggerReevaluate = () => {
-    setIsReevaluating(true);
-    setTimeout(() => {
-      setIsReevaluating(false);
-    }, 800);
+  const [userOverrides, setUserOverrides] = useState<Record<string, 'pending' | 'completed' | 'snoozed' | 'blocked'>>(() => {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(`tars_inbox_overrides_${userId}`);
+        if (saved) return JSON.parse(saved);
+      } catch {
+        // ignore
+      }
+    }
+    return {};
+  });
+
+  // Reload user-specific inbox overrides when switching accounts
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(`tars_inbox_overrides_${userId}`);
+        setUserOverrides(saved ? JSON.parse(saved) : {});
+      } catch {
+        setUserOverrides({});
+      }
+    }
+  }, [userId]);
+
+  const userNudges = nudges.map((n) => {
+    const override = userOverrides[n.id];
+    return override ? { ...n, status: override } : n;
+  });
+
+  const selectedNudge = userNudges.find((n) => n.id === selectedNudgeId) || userNudges[0];
+
+  const handleAction = (id: string, action: 'done' | 'snooze' | 'block') => {
+    const newStatus: 'pending' | 'completed' | 'snoozed' | 'blocked' =
+      action === 'done' ? 'completed' : action === 'snooze' ? 'snoozed' : 'blocked';
+    setUserOverrides((prev) => {
+      const next: Record<string, 'pending' | 'completed' | 'snoozed' | 'blocked'> = { ...prev, [id]: newStatus };
+      if (typeof localStorage !== 'undefined') {
+        try {
+          localStorage.setItem(`tars_inbox_overrides_${userId}`, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+      }
+      return next;
+    });
+
+    // Keep existing backend nudge functionality intact
+    handleNudgeAction(id, action);
+
+    setActionFeedback(
+      action === 'done'
+        ? `Nudge completed for account ${userId}.`
+        : action === 'snooze'
+        ? `Nudge snoozed for account ${userId}.`
+        : `Notification dismissed for account ${userId}.`,
+    );
+    setTimeout(() => setActionFeedback(null), 3000);
   };
 
+  const filteredNudges = userNudges.filter((n) => {
+    if (activeFilter === 'needs_action') return n.status === 'pending';
+    if (activeFilter === 'updates') return n.status !== 'pending';
+    return true;
+  });
+
   return (
-    <div className="max-w-7xl mx-auto space-y-5">
-      {/* Top telemetry bar */}
-      <div className="flex flex-wrap items-center justify-between pb-3 border-b border-slate-200/80 gap-3">
-        <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2 text-sm font-bold text-slate-900">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>Autonomous Intervention Engine</span>
-          </div>
-          <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/70 px-2 py-0.5 rounded-md">
-            STREAM: LIVE
-          </span>
-          <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/70 px-2 py-0.5 rounded-md">
-            QUEUE-HEALTH: OPTIMAL (99.8%)
-          </span>
-        </div>
-
-        <div className="flex items-center space-x-3 text-xs">
-          <div className="hidden md:flex items-center space-x-2 text-[11px] font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded border border-slate-200/60">
-            <span>J / K NAVIGATE</span>
-            <span>•</span>
-            <span>ENTER EXECUTE</span>
-          </div>
-
-          <button
-            onClick={triggerReevaluate}
-            disabled={isReevaluating}
-            className="flex items-center space-x-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold shadow-xs transition-all"
-          >
-            <RotateCcw className={`w-3.5 h-3.5 text-indigo-600 ${isReevaluating ? 'animate-spin' : ''}`} />
-            <span>{isReevaluating ? 'Re-evaluating...' : 'Re-evaluate'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Split master-detail layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Inbox Column (4 cols) */}
-        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-          <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <h3 className="font-bold text-slate-900 text-sm">Inbox</h3>
-              <span className="px-1.5 py-0.2 bg-slate-100 text-slate-600 text-xs font-bold rounded-full">
-                {nudges.filter((n) => n.status === 'pending').length}
+    <main className="flex-1 min-w-0 flex flex-col lg:flex-row bg-surface text-on-surface font-body antialiased">
+      {/* Left Column: Inbox List (420px) */}
+      <section className="w-full lg:w-[420px] shrink-0 bg-surface-container-lowest border-r border-outline-variant flex flex-col shadow-2xs">
+        {/* List Header */}
+        <header className="px-6 pt-6 pb-4 border-b border-outline-variant flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <h1 className="font-headline text-headline-md text-on-surface" data-design-text-token="headline-md">
+                Inbox
+              </h1>
+              <span
+                className="px-2.5 py-0.5 rounded-full bg-primary-soft text-on-primary-soft font-label text-label-sm tabular-nums font-semibold"
+                data-design-text-token="label-sm"
+              >
+                {userNudges.filter((n) => n.status === 'pending').length} new
               </span>
             </div>
-            <button
-              onClick={() => setFilterActive(!filterActive)}
-              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors"
-            >
-              <Filter className="w-3.5 h-3.5" />
-            </button>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-mono uppercase font-bold">
+                {userId} · INBOX
+              </span>
+            </div>
           </div>
 
-          {/* List items */}
-          <div className="divide-y divide-slate-100">
-            {nudges.map((nudge) => {
-              const isSelected = nudge.id === selectedNudgeId;
-              const isResolved = nudge.status !== 'pending';
+          {/* Account isolation disclosure */}
+          <div className="px-2.5 py-1 rounded bg-surface-container border border-outline-variant text-[11px] font-label text-on-surface-variant flex items-center justify-between">
+            <span>Isolated state for <strong className="text-on-surface">{userId}</strong></span>
+            <span className="text-[10px] uppercase font-mono text-on-surface-muted">Demo Isolation</span>
+          </div>
 
-              const dotColor =
-                nudge.category === 'DEADLINE'
-                  ? 'bg-rose-500'
-                  : nudge.category === 'ATTENDANCE'
-                  ? 'bg-amber-500'
-                  : 'bg-indigo-500';
-
+          {/* Filter Chips */}
+          <div className="flex items-center gap-1.5 pt-1">
+            {(['all', 'needs_action', 'updates'] as const).map((filter) => {
+              const label =
+                filter === 'all'
+                  ? 'All'
+                  : filter === 'needs_action'
+                  ? 'Needs action'
+                  : 'Updates';
+              const isSelected = activeFilter === filter;
               return (
-                <div
-                  key={nudge.id}
-                  onClick={() => setSelectedNudgeId(nudge.id)}
-                  className={`p-4 cursor-pointer transition-all ${
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setActiveFilter(filter)}
+                  className={`px-3 py-1 rounded-full text-xs font-label transition-colors cursor-pointer ${
                     isSelected
-                      ? 'bg-indigo-50/70 border-l-4 border-l-indigo-600'
-                      : 'hover:bg-slate-50/80 border-l-4 border-l-transparent'
+                      ? 'bg-primary text-white font-semibold shadow-2xs'
+                      : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
                   }`}
                 >
-                  <div className="flex items-center justify-between text-[11px] mb-1">
-                    <div className="flex items-center space-x-1.5 font-bold">
-                      <span className={`w-2 h-2 rounded-full ${dotColor}`}></span>
-                      <span className="text-slate-600">{nudge.category}</span>
-                      <span className="text-slate-400">•</span>
-                      <span className="text-slate-500 font-mono">{nudge.courseCode}</span>
-                    </div>
-                    <span className="text-slate-400 font-medium">{nudge.dueText}</span>
-                  </div>
-
-                  <h4 className="font-bold text-slate-900 text-xs mt-1">{nudge.title}</h4>
-                  <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">{nudge.snippet}</p>
-
-                  {isResolved && (
-                    <div className="mt-2 inline-flex items-center space-x-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>{nudge.status === 'blocked' ? 'Blocked on Calendar' : nudge.status}</span>
-                    </div>
-                  )}
-                </div>
+                  {label}
+                </button>
               );
             })}
           </div>
+        </header>
+
+        {/* Inbox Items List */}
+        <div className="flex flex-col divide-y divide-outline-variant overflow-y-auto max-h-[calc(100vh-170px)]">
+          {filteredNudges.length === 0 ? (
+            <div className="p-8 text-center text-on-surface-muted text-xs">
+              <span className="material-symbols-outlined text-[28px] text-on-surface-muted mb-2 block">inbox</span>
+              No items in this folder.
+            </div>
+          ) : (
+            filteredNudges.map((nudge) => {
+              const isSelected = nudge.id === selectedNudge?.id;
+              const isPending = nudge.status === 'pending';
+
+              return (
+                <article
+                  key={nudge.id}
+                  onClick={() => setSelectedNudgeId(nudge.id)}
+                  className={`p-4 flex items-start gap-3.5 cursor-pointer transition-colors ${
+                    isSelected
+                      ? 'bg-primary-soft/40 border-l-4 border-l-primary'
+                      : 'hover:bg-surface-container-low'
+                  }`}
+                >
+                  {/* Category Icon */}
+                  <span
+                    className={`inline-flex items-center justify-center w-8 h-8 rounded-full shrink-0 ${
+                      isPending
+                        ? 'bg-status-waiting-bg text-status-waiting border border-status-waiting-border'
+                        : 'bg-status-done-bg text-status-done border border-status-done-border'
+                    }`}
+                    aria-hidden="true"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">
+                      {nudge.category === 'ATTENDANCE'
+                        ? 'fact_check'
+                        : nudge.category === 'PACING'
+                        ? 'menu_book'
+                        : 'auto_awesome'}
+                    </span>
+                  </span>
+
+                  <div className="min-w-0 flex-1 flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-label text-label-sm text-on-surface-muted capitalize">
+                        {nudge.category}
+                      </span>
+                      <span className="font-body text-body-sm text-on-surface-muted tabular-nums text-[11px]">
+                        {nudge.dueText || 'Today'}
+                      </span>
+                    </div>
+
+                    <h2
+                      className={`font-title text-title-sm truncate ${
+                        isPending ? 'text-on-surface font-semibold' : 'text-on-surface-variant'
+                      }`}
+                      data-design-text-token="title-sm"
+                    >
+                      {nudge.title}
+                    </h2>
+
+                    <p className="font-body text-body-sm text-on-surface-muted line-clamp-2 text-pretty text-xs">
+                      {nudge.snippet || nudge.description}
+                    </p>
+                  </div>
+
+                  {isPending && (
+                    <span className="w-2 h-2 rounded-full bg-primary shrink-0 mt-2" title="Unread" />
+                  )}
+                </article>
+              );
+            })
+          )}
         </div>
+      </section>
 
-        {/* Right Detail Column (8 cols) */}
-        <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-6">
-          {/* Header metadata */}
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div className="flex items-center space-x-2 text-xs font-bold text-rose-600">
-              <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-              <span className="uppercase">{selectedNudge.category} INTERVENTION</span>
-              <span className="text-slate-300">•</span>
-              <span className="text-slate-600 font-mono">{selectedNudge.courseCode}</span>
-              <span className="text-slate-300">•</span>
-              <span className="text-slate-500 font-normal">Due {selectedNudge.dueText}</span>
-            </div>
-
-            <div className="flex items-center space-x-2 text-slate-400">
-              <button className="p-1 hover:text-slate-600 hover:bg-slate-100 rounded">
-                <Share2 className="w-4 h-4" />
-              </button>
-              <button className="p-1 hover:text-slate-600 hover:bg-slate-100 rounded">
-                <MoreVertical className="w-4 h-4" />
-              </button>
-            </div>
+      {/* Right Column: Detail Pane */}
+      <section className="flex-1 min-w-0 p-6 lg:p-8 flex flex-col gap-6">
+        {actionFeedback && (
+          <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between animate-in fade-in">
+            <span>{actionFeedback}</span>
+            <span className="material-symbols-outlined text-emerald-600 text-[18px]">check_circle</span>
           </div>
+        )}
 
-          {/* Headline & Body */}
-          <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">{selectedNudge.headline}</h2>
-            <p className="text-xs text-slate-600 mt-2 leading-relaxed">{selectedNudge.description}</p>
-          </div>
-
-          {/* Recommended Plan */}
-          <div className="space-y-3 pt-2">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Recommended Plan</div>
-
-            {/* Step 01 */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex items-start space-x-3.5">
-              <span className="font-mono text-xs font-extrabold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md mt-0.5">
-                01
-              </span>
-              <div>
-                <h4 className="text-xs font-bold text-slate-800">{selectedNudge.plan.slotTitle}</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">{selectedNudge.plan.slotDesc}</p>
+        {selectedNudge ? (
+          <article className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 lg:p-8 flex flex-col gap-6 shadow-2xs">
+            {/* Detail Header */}
+            <header className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-outline-variant">
+              <div className="flex items-start gap-3.5">
+                <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary-soft text-primary border border-status-active-border shrink-0">
+                  <span className="material-symbols-outlined text-[22px]">mail</span>
+                </span>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-label text-[11px] font-bold uppercase">
+                      {selectedNudge.category}
+                    </span>
+                    <span className="text-xs text-on-surface-muted">
+                      {selectedNudge.dueText || 'Today · Dispatch confirmed'}
+                    </span>
+                  </div>
+                  <h2 className="font-headline text-headline-md text-on-surface text-balance">
+                    {selectedNudge.headline || selectedNudge.title}
+                  </h2>
+                </div>
               </div>
-            </div>
 
-            {/* Step 02 */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex items-start space-x-3.5">
-              <span className="font-mono text-xs font-extrabold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md mt-0.5">
-                02
-              </span>
-              <div>
-                <h4 className="text-xs font-bold text-slate-800">{selectedNudge.plan.setupTitle}</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">{selectedNudge.plan.setupDesc}</p>
-              </div>
-            </div>
-
-            {/* Step 03 */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex items-start space-x-3.5">
-              <span className="font-mono text-xs font-extrabold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md mt-0.5">
-                03
-              </span>
-              <div>
-                <h4 className="text-xs font-bold text-slate-800">{selectedNudge.plan.sanctuaryTitle}</h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">{selectedNudge.plan.sanctuaryDesc}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="pt-2 flex flex-wrap items-center gap-3">
-            {selectedNudge.status === 'blocked' ? (
-              <div className="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-semibold flex items-center space-x-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Blocked 10:00–11:00 AM on Calendar</span>
-              </div>
-            ) : selectedNudge.status === 'completed' ? (
-              <div className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold flex items-center space-x-2">
-                <CheckCircle2 className="w-4 h-4 text-slate-500" />
-                <span>Marked Done</span>
-              </div>
-            ) : (
-              <>
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => handleNudgeAction(selectedNudge.id, 'block')}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center space-x-2 transition-colors"
+                  type="button"
+                  onClick={() => handleAction(selectedNudge.id, 'snooze')}
+                  className="px-3 py-1.5 rounded bg-surface-container-lowest border border-outline-variant hover:bg-surface-container text-on-surface font-label text-label-sm transition-colors cursor-pointer"
+                  title="Remind me in next free period"
                 >
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>Block 10:00–11:00 AM on Calendar</span>
+                  Snooze
                 </button>
                 <button
-                  onClick={() => handleNudgeAction(selectedNudge.id, 'snooze')}
-                  className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors"
+                  type="button"
+                  onClick={() => handleAction(selectedNudge.id, 'done')}
+                  className="px-4 py-1.5 rounded bg-primary text-on-primary hover:bg-primary-hover font-label text-label-sm font-semibold transition-colors cursor-pointer shadow-2xs"
                 >
-                  Snooze (2h)
+                  Acknowledge
                 </button>
-                <button
-                  onClick={() => handleNudgeAction(selectedNudge.id, 'done')}
-                  className="px-3.5 py-2 text-slate-500 hover:text-slate-800 text-xs font-semibold transition-colors"
-                >
-                  Mark Done
-                </button>
-              </>
+              </div>
+            </header>
+
+            {/* Context Card */}
+            <div className="p-4 rounded-lg bg-surface-container-low border border-outline-variant flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-primary">
+                <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
+                <span>TARS Autonomous Context</span>
+              </div>
+              <p className="font-body text-body-md text-on-surface leading-relaxed text-pretty">
+                {selectedNudge.description}
+              </p>
+              {selectedNudge.targetSlot && (
+                <p className="text-xs font-mono text-on-surface-muted pt-1 border-t border-outline-variant/60">
+                  Target slot: {selectedNudge.targetSlot}
+                </p>
+              )}
+            </div>
+
+            {/* Recommended Action Plan */}
+            {selectedNudge.plan && (
+              <div className="flex flex-col gap-3">
+                <h3 className="font-title text-title-sm text-on-surface">Suggested plan of action</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                  <div className="p-3 rounded-md bg-surface-container-lowest border border-outline-variant flex flex-col gap-1">
+                    <span className="font-semibold text-on-surface">{selectedNudge.plan.slotTitle}</span>
+                    <span className="text-on-surface-muted">{selectedNudge.plan.slotDesc}</span>
+                  </div>
+                  <div className="p-3 rounded-md bg-surface-container-lowest border border-outline-variant flex flex-col gap-1">
+                    <span className="font-semibold text-on-surface">{selectedNudge.plan.setupTitle}</span>
+                    <span className="text-on-surface-muted">{selectedNudge.plan.setupDesc}</span>
+                  </div>
+                  <div className="p-3 rounded-md bg-surface-container-lowest border border-outline-variant flex flex-col gap-1">
+                    <span className="font-semibold text-on-surface">{selectedNudge.plan.sanctuaryTitle}</span>
+                    <span className="text-on-surface-muted">{selectedNudge.plan.sanctuaryDesc}</span>
+                  </div>
+                </div>
+              </div>
             )}
-          </div>
 
-          {/* Escalation watchdog disclaimer */}
-          <div className="pt-4 border-t border-slate-100 flex items-start space-x-2 text-[11px] text-slate-400">
-            <Info className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
-            <p>
-              TARS will coordinate with Dr. Arvind Swaminathan if this intervention is deferred consecutively.
-            </p>
+            {/* Footer Quick Links */}
+            <footer className="pt-4 border-t border-outline-variant flex items-center justify-between text-xs text-on-surface-muted">
+              <span>Nudge ID: {selectedNudge.id} · Persisted via SQLite nudges</span>
+              <button
+                type="button"
+                onClick={() => setCurrentView('schedule')}
+                className="text-primary font-medium hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <span>View Schedule</span>
+                <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+              </button>
+            </footer>
+          </article>
+        ) : (
+          <div className="py-20 text-center text-on-surface-muted">
+            <p>Select a message from the inbox to read.</p>
           </div>
-        </div>
-      </div>
-    </div>
+        )}
+      </section>
+    </main>
   );
 };

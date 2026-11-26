@@ -2,11 +2,12 @@
 import json
 import logging
 import os
+import re
 import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request, Response
@@ -20,9 +21,11 @@ from sse_starlette.sse import EventSourceResponse
 
 from . import actions, agent, auth, bus, gcal, notify, tools
 from . import stream as sse
-from .db import DAYS, NUDGE_SELECT, fetch_slots, get_db, iso, now, nudge_dict, use_db
-from .models import (AttendanceItem, Day, Decision, ErrorResponse, Event, Faculty, FacultyUpdate,
-                     IncidentAccepted, IncidentRequest, LoginRequest, LoginResponse, LogoutResponse, Meta, Nudge, ResetResult, Room, Slot,
+from .db import DAYS, NUDGE_SELECT, ensure_tables, fetch_slots, get_db, iso, now, nudge_dict, period_numbers, use_db
+from .models import (AttendanceItem, CloseRequest, Day, Decision, ErrorResponse, Event, Faculty, FacultyUpdate,
+                     ImportErrorResponse, ImportRequest, ImportResult, ImportSummary, ImportValidationError,
+                     IncidentAccepted, IncidentRequest, LoginRequest, LoginResponse, LogoutResponse, Meta, NptelNudgeResult, NptelRequest, NptelSubmission,
+                     Nudge, ResetResult, Room, Slot,
                      SnoozeRequest, Stats, StreamTicket,
                      Today, User)
 from .validator import ClashError
@@ -32,6 +35,10 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")  # repo-root .env; fin
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     """Start/stop the Telegram bot + escalation scheduler. Failures are logged, never fatal."""
+    try:
+        ensure_tables()
+    except Exception:
+        logging.getLogger("tars").exception("could not check the database tables")
     try:
         await notify.notifier.start()
     except Exception:
@@ -43,7 +50,7 @@ async def lifespan(_: FastAPI):
         logging.getLogger("tars").exception("notifier failed to stop")
 
 
-app = FastAPI(title="TARS API", version="0.2.1", lifespan=lifespan)
+app = FastAPI(title="TARS API", version="0.6.0", lifespan=lifespan)
 # ---------- CORS ----------
 # Any port on localhost / 127.0.0.1 (Vite moves off 5173 when it's busy, e.g. to 5176).
 LOCAL_ORIGIN_REGEX = r"^http://(localhost|127\.0\.0\.1)(:\d{1,5})?$"
@@ -218,8 +225,10 @@ def faculty_timetable(faculty_id: str, _: User = Depends(current_user),
 
 
 @api.get("/rooms", response_model=list[Room], responses=AUTH_ERRORS, tags=["schedule"])
-def rooms(day: Day, period: int = Query(ge=1, le=6), _: User = Depends(current_user),
+def rooms(day: Day, period: int = Query(ge=1), _: User = Depends(current_user),
           con: sqlite3.Connection = Depends(get_db)):
+    if period not in period_numbers(con):
+        raise HTTPException(422, f"period must be 1..{max(period_numbers(con), default=0)}")
     sql = """SELECT r.id, r.name, r.kind, r.capacity,
                     NOT EXISTS (SELECT 1 FROM slots s WHERE s.room_id = r.id AND s.day = ?
                                 AND s.period = ? AND s.status != 'cancelled') AS free
@@ -271,12 +280,36 @@ def decisions(_: User = Depends(require_hod), con: sqlite3.Connection = Depends(
     return [{**dict(r), "affected_slot_ids": json.loads(r["affected_slot_ids"] or "[]")} for r in rows]
 
 
+def _coverage_kpis(con: sqlite3.Connection) -> dict:
+    """Decisions per KPI (definitions in docs/API_CONTRACT.md). HOD approval alone never counts as rescued."""
+    kinds: dict[int, dict[int, str]] = {}
+    for r in con.execute("SELECT decision_id, slot_id, kind FROM applied_changes"):
+        kinds.setdefault(r["decision_id"], {})[r["slot_id"]] = r["kind"]
+    accepted: dict[int, set[int]] = {}
+    for r in con.execute("SELECT decision_id, slot_ids FROM ack_requests WHERE status = 'accepted'"):
+        accepted.setdefault(r["decision_id"], set()).update(json.loads(r["slot_ids"]))
+    out = dict.fromkeys(("rescued", "pending_confirmation", "cancelled", "escalated", "closed_unresolved"), 0)
+    for d in con.execute("SELECT id, status FROM decisions"):
+        mine = kinds.get(d["id"], {})
+        subs = {s for s, k in mine.items() if k == "substituted"}
+        has_cancel = "cancelled" in mine.values()
+        out["cancelled"] += has_cancel
+        if d["status"] in ("escalated", "closed_unresolved"):
+            out[d["status"]] += 1
+        elif d["status"] in ("committed", "pending_ack", "acknowledged") and subs:
+            if not subs <= accepted.get(d["id"], set()):
+                out["pending_confirmation"] += 1
+            elif not has_cancel:
+                out["rescued"] += 1
+    return out
+
+
 @api.get("/stats", response_model=Stats, responses=HOD_ERRORS, tags=["admin"])
 def stats(_: User = Depends(require_hod), con: sqlite3.Connection = Depends(get_db)):
     one = lambda sql: con.execute(sql).fetchone()[0]
     return {
         "classes_lost": one("SELECT COUNT(*) FROM slots WHERE status = 'cancelled'"),
-        "rescued": one("SELECT COUNT(*) FROM decisions WHERE status IN ('committed','pending_ack','acknowledged')"),
+        **_coverage_kpis(con),
         "nudges_acted": one("SELECT COUNT(*) FROM nudges WHERE read = 1 OR blocked = 1"),
         "avg_response_s": 0,  # filled in once the agent records timings
     }
@@ -355,13 +388,16 @@ STATE_ERRORS = {**HOD_ERRORS, 404: {"model": ErrorResponse}, 409: {"model": Erro
 def create_incident(body: IncidentRequest, bg: BackgroundTasks, user: User = Depends(require_staff),
                     con: sqlite3.Connection = Depends(get_db)):
     if body.type == "absence":
+        if user.role == "faculty" and body.faculty_id != user.user_id:
+            raise HTTPException(403, "Faculty can only report their own absence; ask the HOD")
         if not body.faculty_id or con.execute("SELECT 1 FROM faculty WHERE id = ?", (body.faculty_id,)).fetchone() is None:
             raise HTTPException(422, "absence needs a valid faculty_id")
     elif not body.room_id or con.execute("SELECT 1 FROM rooms WHERE id = ?", (body.room_id,)).fetchone() is None:
         raise HTTPException(422, "room_unavailable needs a valid room_id")
     periods = sorted(set(body.periods))
-    if not periods or any(p not in range(1, 7) for p in periods):
-        raise HTTPException(422, "periods must be a non-empty list of 1..6")
+    allowed = period_numbers(con)
+    if not periods or any(p not in allowed for p in periods):
+        raise HTTPException(422, f"periods must be a non-empty list of 1..{max(allowed, default=0)}")
     slots = agent.affected_slots(con, body.type, body.day, periods, body.faculty_id, body.room_id)
     if not slots:
         raise HTTPException(422, "No scheduled classes are affected by this incident")
@@ -394,17 +430,24 @@ def _invalid_state(row: sqlite3.Row, action: str):
 
 @api.post("/decisions/{decision_id}/approve", response_model=Decision, responses=STATE_ERRORS, tags=["admin"])
 def approve_decision(decision_id: int, _: User = Depends(require_hod), con: sqlite3.Connection = Depends(get_db)):
-    """proposed (with pending changes) → apply them → committed; pending_ack / escalated → acknowledged."""
+    """Decision with pending changes → apply them now (nothing was applied before) → committed, or pending_ack
+    while Telegram asks the substitute (a PARTIAL one stays escalated). Approving never stands in for a
+    substitute's answer: pending_ack is acknowledged here only if nobody is left to answer."""
     row = _decision_row(con, decision_id)
-    if row["status"] == "proposed" and row["changes"]:
+    if row["status"] in ("proposed", "escalated") and row["changes"]:
         try:
-            actions.apply_changes(con, json.loads(row["changes"]))
+            d = agent.apply_approved(con, row)
         except ClashError as e:
             raise HTTPException(409, {"error": "clash", "detail": str(e)})
-        d = tools.update_decision(decision_id, con=con, status="committed", changes=None)
-    elif row["status"] in ("pending_ack", "escalated"):
+        except LookupError:
+            _invalid_state(_decision_row(con, decision_id), "approved")
+    elif row["status"] == "pending_ack":
+        waiting = [r[0] for r in con.execute("SELECT faculty_id FROM ack_requests WHERE decision_id = ? AND "
+                                             "status = 'pending' ORDER BY id", (decision_id,))]
+        if waiting:
+            raise HTTPException(409, {"error": "invalid_state", "detail":
+                                      f"Decision {decision_id} is approved and waits for {', '.join(waiting)} to answer"})
         d = tools.update_decision(decision_id, con=con, status="acknowledged")
-        notify.notifier.cancel_escalation(decision_id)  # HOD confirmed; no Telegram timeout needed
     else:
         _invalid_state(row, "approved")
     bus.publish("decision_updated", d, user_ids=[row["reported_by"]])
@@ -413,11 +456,38 @@ def approve_decision(decision_id: int, _: User = Depends(require_hod), con: sqli
 
 @api.post("/decisions/{decision_id}/reject", response_model=Decision, responses=STATE_ERRORS, tags=["admin"])
 def reject_decision(decision_id: int, _: User = Depends(require_hod), con: sqlite3.Connection = Depends(get_db)):
-    """proposed (with pending changes) or escalated → rejected. Nothing is applied."""
+    """Pending changes (proposed or PARTIAL escalated) → rejected. Nothing is applied."""
     row = _decision_row(con, decision_id)
-    if not ((row["status"] == "proposed" and row["changes"]) or row["status"] == "escalated"):
+    if row["status"] not in ("proposed", "escalated") or not row["changes"]:
         _invalid_state(row, "rejected")
-    d = tools.update_decision(decision_id, con=con, status="rejected", changes=None)
+    with con:  # only if nobody approved it meanwhile
+        n = con.execute("UPDATE decisions SET status = 'rejected', changes = NULL WHERE id = ? AND status = ?",
+                        (decision_id, row["status"])).rowcount
+    if not n:
+        _invalid_state(_decision_row(con, decision_id), "rejected")
+    d = tools.get_decision(decision_id, con=con)
+    bus.publish("decision_updated", d, user_ids=[row["reported_by"]])
+    return d
+
+
+@api.post("/decisions/{decision_id}/close", response_model=Decision,
+          responses={**STATE_ERRORS, 422: {"model": ErrorResponse}}, tags=["admin"])
+def close_decision(decision_id: int, body: CloseRequest, hod: User = Depends(require_hod),
+                   con: sqlite3.Connection = Depends(get_db)):
+    """escalated → closed_unresolved, with a reason. Not an approval: no slot changes, never counts as rescued."""
+    row = _decision_row(con, decision_id)
+    if row["status"] != "escalated":
+        _invalid_state(row, "closed")
+    note = f"\n\nClosed unresolved by {hod.user_id} at {iso(now())}. Reason: {body.reason}"
+    with con:  # only if nothing is still open: no pending proposal, no substitute left to answer
+        n = con.execute("UPDATE decisions SET status = 'closed_unresolved', reasoning = COALESCE(reasoning, '') || ? "
+                        "WHERE id = ? AND status = 'escalated' AND changes IS NULL AND NOT EXISTS "
+                        "(SELECT 1 FROM ack_requests WHERE decision_id = ? AND status = 'pending')",
+                        (note, decision_id, decision_id)).rowcount
+    if not n:
+        raise HTTPException(409, {"error": "invalid_state", "detail":
+                                  f"Decision {decision_id} still has a proposal to decide or substitutes to answer"})
+    d = tools.get_decision(decision_id, con=con)
     bus.publish("decision_updated", d, user_ids=[row["reported_by"]])
     return d
 
@@ -487,6 +557,509 @@ def rename_faculty(faculty_id: str, body: FacultyUpdate, _: User = Depends(requi
         bus.publish("timetable_updated", {"section": section, "slot_ids": ids},
                     sections=[section], user_ids=[faculty_id])
     return _faculty(con, faculty_id)[0]
+
+
+# ---------- timetable import (HOD only) ----------
+DAY_ALIASES = {
+    "MON": "MON", "MONDAY": "MON",
+    "TUE": "TUE", "TUESDAY": "TUE",
+    "WED": "WED", "WEDNESDAY": "WED",
+    "THU": "THU", "THURSDAY": "THU",
+    "FRI": "FRI", "FRIDAY": "FRI",
+}
+
+
+def _clean_str(val: Optional[str]) -> str:
+    return (val or "").strip()
+
+
+def _normalize_name(name: str) -> str:
+    """Normalize names for matching: strip common titles (Dr., Prof., etc.) and punctuation."""
+    s = name.strip().lower()
+    s = re.sub(r"^(dr\.?|prof\.?|mr\.?|ms\.?|mrs\.?)\s+", "", s)
+    return re.sub(r"[^a-z0-9]", "", s)
+
+
+def _open_decisions(con: sqlite3.Connection, sections: list[str]) -> list[int]:
+    """Unresolved decisions that affect slots of these sections; they block an import of them."""
+    ph = ",".join("?" for _ in sections)
+    slot_ids = {r[0] for r in con.execute(f"SELECT id FROM slots WHERE section IN ({ph})", sections)}
+    return [d["id"] for d in con.execute("SELECT id, affected_slot_ids FROM decisions "
+                                         "WHERE status IN ('proposed', 'pending_ack') ORDER BY id")
+            if slot_ids & set(json.loads(d["affected_slot_ids"] or "[]"))]
+
+
+@api.get("/admin/timetable-template", response_class=Response,
+         responses={200: {"content": {"text/csv": {"schema": {"type": "string"}}}, "description": "CSV template"},
+                    **HOD_ERRORS}, tags=["admin"])
+def get_timetable_template(_: User = Depends(require_hod)):
+    """Download a CSV template for importing college timetables."""
+    csv_content = (
+        "section,day,period,subject,faculty,room\n"
+        "CSE-A,MON,1,DS,F01,R101\n"
+        "CSE-A,MON,2,MATH,F03,R101\n"
+        "CSE-A,MON,3,DLD,F05,R101\n"
+        "CSE-A,MON,4,OOP,F02,R101\n"
+        "CSE-A,MON,5,COA,F06,R101\n"
+        "CSE-A,MON,6,DSL,F01,LAB1\n"
+    )
+    headers = {"Content-Disposition": 'attachment; filename="tars_timetable_template.csv"'}
+    return Response(content=csv_content, media_type="text/csv", headers=headers)
+
+
+@api.post("/admin/import-timetable", response_model=ImportResult,
+          responses={**HOD_ERRORS, 409: {"model": ErrorResponse}, 422: {"model": ImportErrorResponse}}, tags=["admin"])
+def import_timetable(body: ImportRequest, dry_run: bool = Query(True),
+                     _: User = Depends(require_hod),
+                     con: sqlite3.Connection = Depends(get_db)):
+    """Import and normalize a timetable from parsed CSV/Excel rows. HOD only.
+
+    Validates section, day, period, subject, faculty, room against DB records,
+    checks that faculty are qualified to teach subjects, detects duplicate slots
+    and clashes within the file and against non-replaced sections.
+    If dry_run=true: returns validation results and preview without saving.
+    If dry_run=false: atomically replaces slots for the replaced sections and emits SSE updates.
+    """
+    errors: list[ImportValidationError] = []
+
+    # 1. Load reference lookups from DB
+    # Sections
+    db_sections = {r[0] for r in con.execute("SELECT DISTINCT section FROM users WHERE section IS NOT NULL")}
+    db_sections |= {r[0] for r in con.execute("SELECT DISTINCT section FROM slots")}
+    section_map = {s.upper(): s for s in db_sections}
+    # Also support stripped dashes e.g. "CSEA" -> "CSE-A", "CSE A" -> "CSE-A"
+    for s in db_sections:
+        section_map[s.replace("-", "").replace(" ", "").upper()] = s
+        section_map[s.replace("-", " ").upper()] = s
+
+    # Subjects
+    subjects_rows = con.execute("SELECT code, name FROM subjects").fetchall()
+    subj_code_map = {}
+    subj_names = {}
+    for r in subjects_rows:
+        code, name = r["code"], r["name"]
+        subj_names[code] = name
+        subj_code_map[code.upper()] = code
+        subj_code_map[name.strip().lower()] = code
+        subj_code_map[_normalize_name(name)] = code
+
+    # Faculty
+    faculty_rows = con.execute(
+        "SELECT f.id, u.name, f.subjects FROM faculty f JOIN users u ON u.id = f.id"
+    ).fetchall()
+    faculty_id_map = {}
+    faculty_names = {}
+    faculty_subjects = {}
+    for r in faculty_rows:
+        fid, name, subs = r["id"], r["name"], r["subjects"]
+        faculty_names[fid] = name
+        faculty_id_map[fid.upper()] = fid
+        faculty_id_map[name.strip().lower()] = fid
+        faculty_id_map[_normalize_name(name)] = fid
+        faculty_subjects[fid] = {s.strip().upper() for s in subs.split(",") if s.strip()}
+
+    # Rooms
+    room_rows = con.execute("SELECT id, name FROM rooms").fetchall()
+    room_id_map = {}
+    room_names = {}
+    for r in room_rows:
+        rid, name = r["id"], r["name"]
+        room_names[rid] = name
+        room_id_map[rid.upper()] = rid
+        room_id_map[name.strip().lower()] = rid
+        room_id_map[_normalize_name(name)] = rid
+
+    # Periods
+    period_rows = con.execute("SELECT period, start, end FROM periods ORDER BY period").fetchall()
+    period_map = {r["period"]: (r["start"], r["end"]) for r in period_rows}
+
+    # 2. Determine and validate replace_sections
+    raw_replace_sections = body.replace_sections
+    target_replace_sections: set[str] = set()
+
+    if raw_replace_sections is not None:
+        if len(raw_replace_sections) == 0:
+            errors.append(ImportValidationError(
+                field="replace_sections", type="missing",
+                message="replace_sections cannot be empty when provided"
+            ))
+        for sec in raw_replace_sections:
+            norm_sec = section_map.get(sec.strip().upper())
+            if not norm_sec:
+                errors.append(ImportValidationError(
+                    field="replace_sections", value=sec, type="unknown",
+                    message=f"Unknown section '{sec}' in replace_sections"
+                ))
+            else:
+                target_replace_sections.add(norm_sec)
+
+    # 3. Per-row validation and normalization
+    normalized_rows: list[dict] = []
+    seen_section_slots: dict[tuple, int] = {}
+    seen_faculty_slots: dict[tuple, int] = {}
+    seen_room_slots: dict[tuple, int] = {}
+
+    for i, row in enumerate(body.rows, 1):
+        row_has_error = False
+
+        # --- Section ---
+        raw_sec = _clean_str(row.section)
+        if not raw_sec:
+            errors.append(ImportValidationError(row=i, field="section", type="missing", message="Missing section"))
+            norm_sec = None
+            row_has_error = True
+        else:
+            norm_sec = section_map.get(raw_sec.upper()) or section_map.get(raw_sec.replace("-", "").replace(" ", "").upper())
+            if not norm_sec:
+                errors.append(ImportValidationError(row=i, field="section", value=raw_sec, type="unknown",
+                                                    message=f"Unknown section '{raw_sec}'"))
+                row_has_error = True
+
+        # --- Day ---
+        raw_day = _clean_str(row.day)
+        if not raw_day:
+            errors.append(ImportValidationError(row=i, field="day", type="missing", message="Missing day"))
+            norm_day = None
+            row_has_error = True
+        else:
+            norm_day = DAY_ALIASES.get(raw_day.upper())
+            if not norm_day:
+                errors.append(ImportValidationError(row=i, field="day", value=raw_day, type="invalid",
+                                                    message=f"Invalid day '{raw_day}' (must be MON..FRI)"))
+                row_has_error = True
+
+        # --- Period ---
+        raw_period = row.period
+        if raw_period is None:
+            errors.append(ImportValidationError(row=i, field="period", type="missing", message="Missing period"))
+            norm_period = None
+            row_has_error = True
+        elif raw_period not in period_map:
+            errors.append(ImportValidationError(row=i, field="period", value=str(raw_period), type="invalid",
+                                                message=f"Invalid period {raw_period} (must be one of {sorted(period_map)})"))
+            norm_period = None
+            row_has_error = True
+        else:
+            norm_period = raw_period
+
+        # --- Subject ---
+        raw_subj = _clean_str(row.subject_code or row.subject)
+        if not raw_subj:
+            errors.append(ImportValidationError(row=i, field="subject", type="missing", message="Missing subject"))
+            norm_subj = None
+            row_has_error = True
+        else:
+            norm_subj = (subj_code_map.get(raw_subj.upper()) or
+                         subj_code_map.get(raw_subj.lower()) or
+                         subj_code_map.get(_normalize_name(raw_subj)))
+            if not norm_subj:
+                errors.append(ImportValidationError(row=i, field="subject", value=raw_subj, type="unknown",
+                                                    message=f"Unknown subject '{raw_subj}'"))
+                row_has_error = True
+
+        # --- Faculty ---
+        raw_fac = _clean_str(row.faculty_id or row.faculty)
+        if not raw_fac:
+            errors.append(ImportValidationError(row=i, field="faculty", type="missing", message="Missing faculty"))
+            norm_fac = None
+            row_has_error = True
+        else:
+            norm_fac = (faculty_id_map.get(raw_fac.upper()) or
+                        faculty_id_map.get(raw_fac.lower()) or
+                        faculty_id_map.get(_normalize_name(raw_fac)))
+            if not norm_fac:
+                errors.append(ImportValidationError(row=i, field="faculty", value=raw_fac, type="unknown",
+                                                    message=f"Unknown faculty '{raw_fac}'"))
+                row_has_error = True
+
+        # --- Room ---
+        raw_room = _clean_str(row.room_id or row.room)
+        if not raw_room:
+            errors.append(ImportValidationError(row=i, field="room", type="missing", message="Missing room"))
+            norm_room = None
+            row_has_error = True
+        else:
+            norm_room = (room_id_map.get(raw_room.upper()) or
+                         room_id_map.get(raw_room.lower()) or
+                         room_id_map.get(_normalize_name(raw_room)))
+            if not norm_room:
+                errors.append(ImportValidationError(row=i, field="room", value=raw_room, type="unknown",
+                                                    message=f"Unknown room '{raw_room}'"))
+                row_has_error = True
+
+        # Capability check: can this faculty teach this subject?
+        if norm_fac and norm_subj:
+            allowed_subs = faculty_subjects.get(norm_fac, set())
+            if norm_subj not in allowed_subs:
+                fac_name = faculty_names.get(norm_fac, norm_fac)
+                subj_name = subj_names.get(norm_subj, norm_subj)
+                errors.append(ImportValidationError(
+                    row=i, field="faculty", value=raw_fac, type="mismatch",
+                    message=f"Faculty '{fac_name}' ({norm_fac}) is not qualified to teach '{subj_name}' ({norm_subj})"
+                ))
+                row_has_error = True
+
+        if not row_has_error and norm_sec and norm_day and norm_period and norm_subj and norm_fac and norm_room:
+            # Internal Duplicate/Clash Checks within the import
+            sec_slot_key = (norm_sec, norm_day, norm_period)
+            if sec_slot_key in seen_section_slots:
+                prev_row = seen_section_slots[sec_slot_key]
+                errors.append(ImportValidationError(
+                    row=i, type="duplicate",
+                    message=f"Duplicate slot: section {norm_sec} {norm_day} P{norm_period} already assigned in row {prev_row}"
+                ))
+            else:
+                seen_section_slots[sec_slot_key] = i
+
+            fac_slot_key = (norm_fac, norm_day, norm_period)
+            if fac_slot_key in seen_faculty_slots:
+                prev_row = seen_faculty_slots[fac_slot_key]
+                fac_name = faculty_names.get(norm_fac, norm_fac)
+                errors.append(ImportValidationError(
+                    row=i, type="clash", field="faculty", value=norm_fac,
+                    message=f"Faculty clash: {fac_name} ({norm_fac}) double-booked on {norm_day} P{norm_period} (also in row {prev_row})"
+                ))
+            else:
+                seen_faculty_slots[fac_slot_key] = i
+
+            room_slot_key = (norm_room, norm_day, norm_period)
+            if room_slot_key in seen_room_slots:
+                prev_row = seen_room_slots[room_slot_key]
+                rm_name = room_names.get(norm_room, norm_room)
+                errors.append(ImportValidationError(
+                    row=i, type="clash", field="room", value=norm_room,
+                    message=f"Room clash: {rm_name} ({norm_room}) double-booked on {norm_day} P{norm_period} (also in row {prev_row})"
+                ))
+            else:
+                seen_room_slots[room_slot_key] = i
+
+            normalized_rows.append({
+                "row_index": i,
+                "section": norm_sec,
+                "day": norm_day,
+                "period": norm_period,
+                "subject_code": norm_subj,
+                "subject_name": subj_names.get(norm_subj, norm_subj),
+                "faculty_id": norm_fac,
+                "faculty_name": faculty_names.get(norm_fac, norm_fac),
+                "room_id": norm_room,
+                "start": period_map[norm_period][0],
+                "end": period_map[norm_period][1],
+            })
+
+    # Auto-infer replace_sections if not explicitly provided
+    detected_sections = sorted({r["section"] for r in normalized_rows})
+    if raw_replace_sections is None:
+        target_replace_sections = set(detected_sections)
+    else:
+        # If replace_sections was provided, ensure all rows belong to replace_sections
+        for r in normalized_rows:
+            if r["section"] not in target_replace_sections:
+                errors.append(ImportValidationError(
+                    row=r["row_index"], field="section", value=r["section"], type="mismatch",
+                    message=f"Section '{r['section']}' is not included in replace_sections {sorted(target_replace_sections)}"
+                ))
+        # Never wipe a section the file has no rows for (rows with errors are reported on their own).
+        named = {section_map.get(_clean_str(r.section).upper())
+                 or section_map.get(_clean_str(r.section).replace("-", "").replace(" ", "").upper())
+                 for r in body.rows}
+        for sec in sorted(target_replace_sections - named):
+            errors.append(ImportValidationError(
+                field="replace_sections", value=sec, type="missing",
+                message=f"Section '{sec}' is in replace_sections but has no rows; its timetable would be emptied"
+            ))
+
+    # 4. Cross-section clashes (against sections NOT being replaced)
+    if target_replace_sections:
+        ph = ",".join("?" for _ in target_replace_sections)
+        external_slots = con.execute(
+            f"SELECT s.id, s.day, s.period, s.section, s.faculty_id, u.name as faculty_name, "
+            f"s.room_id, r.name as room_name "
+            f"FROM slots s "
+            f"JOIN users u ON u.id = s.faculty_id "
+            f"JOIN rooms r ON r.id = s.room_id "
+            f"WHERE s.status != 'cancelled' AND s.section NOT IN ({ph})",
+            tuple(target_replace_sections)
+        ).fetchall()
+
+        # Build lookup tables for non-replaced active slots
+        ext_faculty_slots: dict[tuple, sqlite3.Row] = {}
+        ext_room_slots: dict[tuple, sqlite3.Row] = {}
+        for es in external_slots:
+            ext_faculty_slots[(es["faculty_id"], es["day"], es["period"])] = es
+            ext_room_slots[(es["room_id"], es["day"], es["period"])] = es
+
+        for r in normalized_rows:
+            fac_key = (r["faculty_id"], r["day"], r["period"])
+            if fac_key in ext_faculty_slots:
+                es = ext_faculty_slots[fac_key]
+                errors.append(ImportValidationError(
+                    row=r["row_index"], field="faculty", value=r["faculty_id"], type="clash",
+                    message=f"Faculty clash: {r['faculty_name']} ({r['faculty_id']}) already teaching "
+                            f"section {es['section']} on {r['day']} P{r['period']}"
+                ))
+
+            rm_key = (r["room_id"], r["day"], r["period"])
+            if rm_key in ext_room_slots:
+                es = ext_room_slots[rm_key]
+                errors.append(ImportValidationError(
+                    row=r["row_index"], field="room", value=r["room_id"], type="clash",
+                    message=f"Room clash: {r['room_id']} already occupied by "
+                            f"section {es['section']} on {r['day']} P{r['period']}"
+                ))
+
+    # 5. Dry run reports what would block the real import (which re-checks inside its transaction → 409)
+    if dry_run:
+        for did in _open_decisions(con, sorted(target_replace_sections)):
+            errors.append(ImportValidationError(
+                field="decision", value=str(did), type="blocked",
+                message=f"Decision #{did} is unresolved and affects a section being replaced; resolve it before importing"
+            ))
+
+    summary = ImportSummary(
+        total_rows=len(body.rows),
+        sections=sorted(target_replace_sections) if target_replace_sections else detected_sections,
+        errors=len(errors)
+    )
+    valid = len(errors) == 0
+
+    # Build preview if valid
+    preview: list[Slot] = []
+    if valid:
+        day_order = {d: i for i, d in enumerate(DAYS)}
+        sorted_rows = sorted(normalized_rows, key=lambda x: (day_order.get(x["day"], 99), x["period"], x["section"]))
+        for idx, r in enumerate(sorted_rows, 1):
+            preview.append(Slot(
+                id=idx,
+                day=r["day"],
+                period=r["period"],
+                start=r["start"],
+                end=r["end"],
+                section=r["section"],
+                subject_code=r["subject_code"],
+                subject_name=r["subject_name"],
+                faculty_id=r["faculty_id"],
+                faculty_name=r["faculty_name"],
+                room_id=r["room_id"],
+                status="scheduled"
+            ))
+
+    if dry_run or not valid:
+        if not valid and not dry_run:
+            raise HTTPException(422, {
+                "error": "validation",
+                "detail": f"Import validation failed with {len(errors)} error(s)",
+                "errors": [e.model_dump() for e in errors],
+                "summary": summary.model_dump()
+            })
+        return ImportResult(
+            valid=valid,
+            errors=errors,
+            summary=summary,
+            preview=preview if valid else None
+        )
+
+    # 6. Atomic replace (dry_run=false and valid). Unique indexes catch a timetable that changed since validation.
+    target_sections_list = sorted(target_replace_sections)
+    ph = ",".join("?" for _ in target_sections_list)
+    gcal.calendar.wait_idle(timeout=10)  # let in-flight event saves land, so none is orphaned in the calendar
+    try:
+        with con:  # any exception below rolls everything back
+            con.execute("BEGIN IMMEDIATE")  # no decision or slot can change between this check and the replace
+            open_ids = _open_decisions(con, target_sections_list)
+            if open_ids:
+                raise HTTPException(409, {"error": "invalid_state", "detail":
+                                          f"Resolve open decision(s) {', '.join(map(str, open_ids))} for these sections "
+                                          "before importing; nothing was saved."})
+            old_slots = con.execute(f"DELETE FROM slots WHERE section IN ({ph}) "
+                                    "RETURNING section, faculty_id, gcal_event_id", target_sections_list).fetchall()
+            con.executemany(
+                "INSERT INTO slots (day, period, section, subject_code, faculty_id, room_id, status) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'scheduled')",
+                [(r["day"], r["period"], r["section"], r["subject_code"], r["faculty_id"], r["room_id"])
+                 for r in normalized_rows]
+            )
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, {"error": "clash", "detail": "The timetable changed while importing; nothing was saved. "
+                                                               "Run the check again."})
+    event_ids = [r["gcal_event_id"] for r in old_slots if r["gcal_event_id"]]
+    if event_ids:
+        # only events TARS created for replaced slots; background, never blocks or fails the import
+        if gcal.calendar.delete_events(event_ids) is None:
+            logging.getLogger("tars").error("import: calendar is off; event(s) of replaced slots not deleted: %s", event_ids)
+
+    # 7. SSE: the section, HOD, and every faculty member who gained or lost a class
+    for sec in target_sections_list:
+        new = con.execute("SELECT id, faculty_id FROM slots WHERE section = ? ORDER BY id", (sec,)).fetchall()
+        fac_ids = {r["faculty_id"] for r in new} | {r["faculty_id"] for r in old_slots if r["section"] == sec}
+        bus.publish("timetable_updated", {"section": sec, "slot_ids": [r["id"] for r in new]},
+                    sections=[sec], user_ids=fac_ids, hod=True)
+
+    return ImportResult(
+        valid=True,
+        errors=[],
+        summary=summary,
+        imported=len(normalized_rows),
+        preview=preview
+    )
+
+
+# ---------- NPTEL certificate requests: read + remind. No upload, no certificate checking. ----------
+NPTEL_ERRORS = {**AUTH_ERRORS, 404: {"model": ErrorResponse}}
+
+
+def _nptel_requests(con: sqlite3.Connection, user: User, request_id: Optional[int] = None) -> list[dict]:
+    """Staff see all requests; students only those for their section. Counts come from the rows."""
+    rows = con.execute(
+        "SELECT r.*, u.name AS faculty_name, COUNT(s.id) AS total_students, "
+        "COALESCE(SUM(s.status != 'pending'), 0) AS submitted_count, "
+        "COALESCE(SUM(s.status = 'verified'), 0) AS verified_count, "
+        "COALESCE(SUM(s.status = 'flagged'), 0) AS flagged_count "
+        "FROM nptel_requests r JOIN users u ON u.id = r.faculty_id LEFT JOIN nptel_submissions s ON s.request_id = r.id "
+        "WHERE ? IS NULL OR r.id = ? GROUP BY r.id ORDER BY r.due_date, r.id", (request_id, request_id)).fetchall()
+    out = [{**dict(r), "sections": json.loads(r["sections"])} for r in rows]
+    return [r for r in out if user.role != "student" or user.section in r["sections"]]
+
+
+def _nptel_or_404(con: sqlite3.Connection, user: User, request_id: int) -> dict:
+    found = _nptel_requests(con, user, request_id)
+    if not found:
+        raise HTTPException(404, f"No NPTEL request {request_id}")
+    return found[0]
+
+
+@api.get("/nptel/requests", response_model=list[NptelRequest], responses=AUTH_ERRORS, tags=["nptel"])
+def nptel_requests(user: User = Depends(current_user), con: sqlite3.Connection = Depends(get_db)):
+    return _nptel_requests(con, user)
+
+
+@api.get("/nptel/requests/{request_id}/submissions", response_model=list[NptelSubmission], responses=NPTEL_ERRORS,
+         tags=["nptel"])
+def nptel_submissions(request_id: int, status: Optional[Literal["pending", "verified", "flagged"]] = None,
+                      user: User = Depends(current_user), con: sqlite3.Connection = Depends(get_db)):
+    """Staff: every row. Students: only their own."""
+    _nptel_or_404(con, user, request_id)
+    rows = con.execute("SELECT * FROM nptel_submissions WHERE request_id = ? AND (? IS NULL OR status = ?) "
+                       "AND (? IS NULL OR user_id = ?) ORDER BY id",
+                       (request_id, status, status, *[user.user_id if user.role == "student" else None] * 2))
+    return [{**dict(r), "flags": json.loads(r["flags"])} for r in rows]
+
+
+@api.post("/nptel/requests/{request_id}/nudge", response_model=NptelNudgeResult,
+          responses={**NPTEL_ERRORS, 403: {"model": ErrorResponse}}, tags=["nptel"])
+def nptel_nudge(request_id: int, user: User = Depends(require_staff), con: sqlite3.Connection = Depends(get_db)):
+    """In-app reminder to pending students who have an account. The requesting faculty or the HOD only."""
+    req = _nptel_or_404(con, user, request_id)
+    if user.role == "faculty" and req["faculty_id"] != user.user_id:
+        raise HTTPException(403, "Only the faculty who made the request, or the HOD, can send reminders")
+    title = f"NPTEL reminder #{request_id}: {req['item']}"[:200]
+    pending = con.execute(
+        "SELECT s.user_id FROM nptel_submissions s JOIN users u ON u.id = s.user_id AND u.role = 'student' "
+        "WHERE s.request_id = ? AND s.status = 'pending' AND NOT EXISTS (SELECT 1 FROM nudges n WHERE n.user_id = s.user_id "
+        "AND n.title = ? AND n.read = 0 AND n.blocked = 0)", (request_id, title)).fetchall()
+    for (uid,) in pending:
+        actions.create_nudge(con, uid, "deadline", title, f"{req['title']}. Due {req['due_date']}.")
+    return {"nudged_count": len(pending)}
 
 
 # ---------- demo support (v0.4) ----------

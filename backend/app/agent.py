@@ -4,9 +4,10 @@ The LLM only *chooses*; every rule that matters is also enforced here in code:
   - only slots affected by the incident may change; no swaps (each change must be valid on its own)
   - substitutes must be able to teach the subject and can't be the absent faculty
   - no cancelling a <75% attendance class before substitute AND reschedule were tried and failed
-  - cancellations are never applied directly: they become a proposal for HOD approval
-  - commit goes through the clash validator (tools.commit_change)
-Gemini unavailable / failing → the decision is marked `escalated` with a clean message. Never raises.
+  - nothing is applied here: every change is a proposal; HOD approval applies it (apply_approved)
+  - every proposal goes through the clash validator, and again when it is applied
+Gemini unavailable / failing → the same rules run with the deterministic substitute finder (run_fallback);
+if that can't help either, the decision is marked `escalated`. Never raises.
 """
 import json
 import logging
@@ -15,8 +16,8 @@ from datetime import datetime
 from typing import Any, Optional
 
 from . import actions, bus, gcal, notify, tools
-from .db import fetch_slots, use_db
-from .validator import ClashError, validate_clash
+from .db import DAYS, fetch_slots, period_numbers, use_db
+from .validator import ClashError, ClashResult, validate_clash
 
 log = logging.getLogger("tars.agent")
 
@@ -59,7 +60,7 @@ Hard rules:
    Pass the absent faculty in find_substitute's `exclude`.
 6. Change only the affected slots listed in the incident.
 7. commit_change runs the clash validator. If it returns ok=false, pick another option.
-   Cancellations are not applied immediately; they are sent to the HOD for approval.
+   It never edits the timetable: every change is a proposal that the HOD approves or rejects.
 8. When every slot is handled, call log_decision exactly once with a one-line summary and a reasoning
    paragraph citing the attendance %, the chosen faculty and their load (or the new time/room), and
    why other options were rejected. Then answer with one short sentence and stop.
@@ -90,7 +91,7 @@ TOOL_SPECS = [
     ("propose_reschedule", "Clash-free new day/period/room for a slot with the same faculty. Read-only. "
      "Returns {from, to, change} or null.",
      _obj({"slot_id": INT, "day": DAY, "period": INT}, ["slot_id"])),
-    ("commit_change", "Apply changes after the clash validator. Cancellations go to the HOD for approval.",
+    ("commit_change", "Propose changes (checked by the clash validator) to the HOD. Never edits the timetable.",
      _obj({"changes": {"type": "array", "items": CHANGE}}, ["changes"])),
     ("log_decision", "Record the final decision: one-line summary and full reasoning. Call once at the end.",
      _obj({"summary": STR, "reasoning": STR}, ["summary", "reasoning"])),
@@ -152,7 +153,9 @@ class AgentRun:
             con, incident["type"], incident["day"], incident["periods"],
             incident.get("faculty_id"), incident.get("room_id"))}
         self.handled: dict[int, str] = {}       # slot_id → "substituted" | "moved" | "cancel_proposed"
-        self.proposed: list[dict] = []          # cancellations awaiting HOD
+        self.proposed: list[dict] = []          # all changes awaiting HOD approval
+        self.fallback_reason = ""
+        self.source = "Gemini"                  # who made the recommendation; "fallback" when Gemini was not used
         self.no_substitute: set[int] = set()    # slots where find_substitute returned null
         self.no_reschedule: set[int] = set()    # slots where propose_reschedule returned null
         self.logged: Optional[dict] = None
@@ -196,7 +199,21 @@ class AgentRun:
         exclude = list(exclude or [])
         if self.inc["type"] == "absence":
             exclude.append(self.inc["faculty_id"])
+        # whoever declined one of these classes on Telegram isn't asked again
+        for sid, s in self.slots.items():
+            if (s["subject_code"], s["day"], s["period"]) == (subject_code, day, int(period)):
+                exclude += self._declined(sid)
+        # proposals aren't in the timetable yet, so count them here
+        exclude += [c["faculty_id"] for c in self.proposed
+                    if "faculty_id" in c and self._when(c) == (day, int(period))]
         sub = tools.find_substitute(subject_code, day, int(period), exclude=exclude, con=self.con)
+        if sub:
+            extra = [c["faculty_id"] for c in self.proposed if "faculty_id" in c]
+            limits = dict(self.con.execute("SELECT id, max_load FROM faculty").fetchall())
+            cands = [{**c, "load": c["load"] + extra.count(c["faculty_id"])} for c in sub["candidates"]]
+            cands = sorted((c for c in cands if c["load"] < limits[c["faculty_id"]]),
+                           key=lambda c: (c["load"], c["faculty_id"]))
+            sub = {**cands[0], "candidates": cands} if cands else None
         if sub is None:
             self.no_substitute |= {sid for sid, s in self.slots.items()
                                    if (s["subject_code"], s["day"], s["period"]) == (subject_code, day, int(period))}
@@ -209,6 +226,9 @@ class AgentRun:
         slot_id = int(slot_id)
         if slot_id not in self.slots:
             return {"error": f"slot {slot_id} is not affected by this incident"}
+        if self.lab_locked(self.slots[slot_id]):
+            self.no_reschedule.add(slot_id)
+            return None
         day = day or None
         if day is None and self.inc["type"] == "absence":
             # search the other days first: the absent faculty can't teach on the incident day
@@ -222,6 +242,23 @@ class AgentRun:
         if p is None and day is None and period is None:
             self.no_reschedule.add(slot_id)
         return p
+
+    def _when(self, ch: dict) -> tuple[str, int]:
+        slot = self.slots[ch["slot_id"]]
+        return ch.get("day", slot["day"]), ch.get("period", slot["period"])
+
+    def lab_locked(self, slot: dict) -> bool:
+        """BMSIT demo: labs are never moved, so the two halves of a lab can't be split. Neither is a class whose
+        timetable entry is unconfirmed (its time must stay blocked)."""
+        if slot["subject_code"].startswith("UNCONFIRMED-"):
+            return True
+        return os.environ.get("TARS_SEED", "").strip().lower() == "bmsit" and bool(self.con.execute(
+            "SELECT is_lab FROM subjects WHERE code = ?", (slot["subject_code"],)).fetchone()[0])
+
+    def _declined(self, slot_id: int) -> set[str]:
+        return {r["faculty_id"] for r in self.con.execute(
+            "SELECT faculty_id, slot_ids FROM ack_requests WHERE status = 'declined'")
+            if slot_id in json.loads(r["slot_ids"])}
 
     def _check(self, ch: dict) -> Optional[str]:
         """Rule check for one non-cancel change; returns an error string or None."""
@@ -237,14 +274,20 @@ class AgentRun:
             row = self.con.execute("SELECT subjects FROM faculty WHERE id = ?", (fac,)).fetchone()
             if row is None or slot["subject_code"] not in {x.strip() for x in row["subjects"].split(",")}:
                 return f"slot {sid}: {fac} cannot teach {slot['subject_code']}"
+            if fac != slot["faculty_id"] and fac in self._declined(sid):
+                return f"slot {sid}: {fac} declined this class"
         if absent and fac == absent and ch.get("day", slot["day"]) == self.inc["day"]:
             return f"slot {sid}: {absent} is absent on {self.inc['day']}; substitute or move to another day"
         if self.inc["type"] == "room_unavailable" and ch.get("room_id", slot["room_id"]) == self.inc["room_id"] \
                 and ch.get("day", slot["day"]) == self.inc["day"] and ch.get("period", slot["period"]) in self.inc["periods"]:
             return f"slot {sid}: room {self.inc['room_id']} is unavailable then"
+        if self._when(ch) != (slot["day"], slot["period"]) and self.lab_locked(slot):
+            return f"slot {sid}: labs and unconfirmed classes are not moved in this demo; leave it to the HOD"
         single = validate_clash([ch], con=self.con)  # each change valid on its own → no swaps
         if not single.ok:
             return f"slot {sid}: {single.detail} (swaps are not allowed; only moves into free cells)"
+        if fac != slot["faculty_id"] and self._when(ch) != (slot["day"], slot["period"]):
+            return f"slot {sid}: either substitute or move, not both"  # so a decline can be undone exactly
         return None
 
     def t_commit_change(self, changes):
@@ -273,40 +316,21 @@ class AgentRun:
         self.step("reason", "Constraints OK: " + "; ".join(self._constraint_notes(c) for c in changes),
                   phase="constraints")
 
-        result: dict[str, Any] = {"ok": True}
-        if edits:
-            check = validate_clash(edits, con=self.con)
-            self.step("tool_call", f"validate_clash({len(edits)} change(s)) -> "
-                      + ("OK, no section/faculty/room clash" if check.ok else f"clash: {check.detail}"),
-                      phase="resolve")
-            if not check.ok:
-                return {"ok": False, "error": "clash", "detail": check.detail}
-            try:
-                out = actions.apply_changes(self.con, edits)  # validates again inside the write transaction
-            except ClashError as e:
-                self.step("tool_call", f"validate_clash -> clash: {e}", phase="resolve")
-                return {"ok": False, "error": "clash", "detail": str(e)}
-            for s in out["slots"]:
-                orig = self.slots[s["id"]]
-                # compare with the original slot: models often echo unchanged day/period
-                if s["faculty_id"] != orig["faculty_id"] or self.handled.get(s["id"]) == "substituted":
-                    self.handled[s["id"]] = "substituted"
-                elif (s["day"], s["period"]) != (orig["day"], orig["period"]):
-                    self.handled[s["id"]] = "moved"
-                else:
-                    self.handled[s["id"]] = "room_changed"
-            result.update(committed_slot_ids=out["slot_ids"], students_notified=len(out["nudge_ids"]))
-            self.pending_acts.append(("dispatch", f"Committed {len(edits)} change(s), sent {len(out['nudge_ids'])} "
-                                      f"nudge(s): " + "; ".join(actions.describe(self.slots[s["id"]], s)
-                                                                for s in out["slots"])))
-        if cancels:
-            self.proposed += cancels
-            for c in cancels:
-                self.handled[c["slot_id"]] = "cancel_proposed"
-            result["awaiting_hod_approval"] = [c["slot_id"] for c in cancels]
-            self.pending_acts.append(("escalate", f"Cancellation of slot(s) {[c['slot_id'] for c in cancels]} "
-                                                  f"sent to HOD for approval"))
-        return result
+        # validate together with what is already proposed: the HOD approves everything at once
+        redone = {c["slot_id"] for c in changes}
+        proposal = [c for c in self.proposed if c["slot_id"] not in redone] + changes
+        check = validate_clash(proposal, con=self.con)
+        self.step("tool_call", f"validate_clash({len(changes)} change(s)) -> "
+                  + ("OK, no section/faculty/room clash" if check.ok else f"clash: {check.detail}"), phase="resolve")
+        if not check.ok:
+            return {"ok": False, "error": "clash", "detail": check.detail}
+        self.proposed = proposal
+        for c in changes:
+            self.handled[c["slot_id"]] = ("cancel_proposed" if c.get("status") == "cancelled"
+                                          else change_kind(self.slots[c["slot_id"]], c))
+        ids = [c["slot_id"] for c in changes]
+        self.pending_acts.append(("escalate", f"Change(s) to slot(s) {ids} sent to HOD for approval; timetable unchanged"))
+        return {"ok": True, "awaiting_hod_approval": ids}
 
     def _constraint_notes(self, c: dict) -> str:
         """Human summary of the rules a (valid) change satisfied, for the 'constraints' phase."""
@@ -322,35 +346,6 @@ class AgentRun:
         if (c.get("day", slot["day"]), c.get("period", slot["period"])) != (slot["day"], slot["period"]):
             notes.append(f"move to {c.get('day', slot['day'])} P{c.get('period', slot['period'])}")
         return f"slot {c['slot_id']}: " + ", ".join(notes)
-
-    def notify_substitutes(self) -> None:
-        """Telegram Accept/Decline to each substitute (after the final status is written, so a fast
-        Accept can't be overwritten). No-op when Telegram is off; never raises."""
-        sub_ids = sorted(sid for sid, how in self.handled.items() if how == "substituted")
-        if not sub_ids:
-            return
-        try:
-            reqs = notify.notifier.request_acks(self.decision_id, sub_ids, con=self.con)
-        except Exception:
-            log.exception("could not send Telegram ack requests")
-            return
-        if reqs:
-            sent = [r["faculty_id"] for r in reqs if r["message_id"]]
-            unsent = [r["faculty_id"] for r in reqs if not r["message_id"]]
-            self.step("act", "Telegram: asked " + (", ".join(sent) or "nobody")
-                      + f" to confirm (reply within {notify.escalation_minutes():g} min)"
-                      + (f"; not reachable: {', '.join(unsent)}" if unsent else ""), phase="dispatch")
-
-    def sync_calendar(self) -> None:
-        """Queue Google Calendar create/update for every substitution or move (background; never raises)."""
-        slots = sorted((sid, how) for sid, how in self.handled.items() if how in ("substituted", "moved", "room_changed"))
-        try:
-            fut = gcal.calendar.sync_slots(self.decision_id, slots, self.audience)
-        except Exception:
-            log.exception("could not queue calendar sync")
-            return
-        if fut is not None:
-            self.step("act", f"Calendar: saving {len(slots)} event(s) in the background", phase="dispatch")
 
     def flush_acts(self) -> None:
         for phase, text in self.pending_acts:
@@ -377,16 +372,12 @@ class AgentRun:
     # ----- wrap-up -----
     def finish(self, failure: Optional[str] = None) -> dict:
         unresolved = [sid for sid in self.slots if sid not in self.handled]
-        if failure or unresolved:
-            status = "escalated"
-        elif self.proposed:
-            status = "proposed"
-        elif "substituted" in self.handled.values():
-            status = "pending_ack"  # substitute must acknowledge (Telegram step comes later)
+        if failure or unresolved or not self.proposed:
+            status = "escalated"  # HOD acts manually; any partial proposal can still be approved
         else:
-            status = "committed"
+            status = "proposed"   # waits for HOD; the timetable is unchanged until then
 
-        done = "; ".join(f"slot {sid} {how}" for sid, how in self.handled.items()) or "no changes applied"
+        done = "; ".join(f"slot {sid} {how}" for sid, how in self.handled.items()) or "no changes proposed"
         if failure:
             summary = f"TARS agent could not finish: {failure}. Manual action needed."
             reasoning = f"Agent stopped: {failure}. So far: {done}."
@@ -397,16 +388,150 @@ class AgentRun:
             reasoning = (self.logged or {}).get("reasoning") or self.final_text or f"Actions: {done}."
         if unresolved and not failure:
             reasoning += f"\n\nUnresolved slots {unresolved}: escalated to HOD."
-        affected = sorted(self.handled) or sorted(self.slots)
+        label = "Gemini" if self.source == "Gemini" else "Rule-based fallback"
+        if not (failure and not self.proposed):
+            partial = "PARTIAL, some classes not covered: " if unresolved and self.proposed else ""
+            summary = f"[{label}] {partial}{summary}"
+            origin = label if self.source == "Gemini" else f"{label} (no Gemini output used)"
+            reasoning = f"Recommendation source: {origin}.{self.fallback_reason}\n\n{reasoning}"
+        affected = sorted(self.slots) if unresolved else sorted(self.handled)
         d = tools.update_decision(self.decision_id, con=self.con, summary=summary, reasoning=reasoning,
                                   status=status, affected_slot_ids=affected,
                                   changes=self.proposed or None)
         bus.publish("decision_updated", d, user_ids=self.audience)
-        self.notify_substitutes()
-        self.sync_calendar()
         self.step("error" if failure else "done", summary if failure else f"Decision #{d['id']}: {status}",
                   phase="escalate" if status in ("escalated", "proposed") else "dispatch")
         return d
+
+
+def change_kind(before: dict, ch: dict) -> str:
+    """What a non-cancel change does (models often echo unchanged day/period)."""
+    if ch.get("faculty_id", before["faculty_id"]) != before["faculty_id"]:
+        return "substituted"
+    if (ch.get("day", before["day"]), ch.get("period", before["period"])) != (before["day"], before["period"]):
+        return "moved"
+    return "room_changed"
+
+
+def run_fallback(run: AgentRun, reason: str) -> None:
+    """No LLM: substitute → (other room) → reschedule per slot, through the same checks as Gemini's calls.
+
+    Starts over, so a recommendation is never a mix of both. Never proposes a cancellation: what can't be
+    covered is escalated to the HOD.
+    """
+    run.proposed, run.handled, run.logged, run.final_text = [], {}, None, ""
+    run.no_substitute, run.no_reschedule = set(), set()
+    run.pending_acts.clear()
+    run.source, run.fallback_reason = "fallback", f" Reason: {reason}."
+    run.step("reason", f"{reason}. Using the rule-based substitute finder (no AI)", phase="evaluate")
+    notes = []
+    for sid, slot in sorted(run.slots.items(), key=lambda kv: (kv[1]["period"], kv[0])):
+        options = []
+        if run.inc["type"] == "absence":
+            sub = run.t_find_substitute(slot["subject_code"], slot["day"], slot["period"])
+            run.step("tool_call", f"find_substitute({slot['subject_code']}, {slot['day']} P{slot['period']}) -> "
+                     + _short_result(sub), phase="match")
+            options = [({"slot_id": sid, "faculty_id": c["faculty_id"]},
+                        f"{c['name']} ({c['faculty_id']}) can teach {slot['subject_code']}, is free, load {c['load']}")
+                       for c in (sub or {}).get("candidates", [])]
+        else:
+            kind = run.con.execute("SELECT kind FROM rooms WHERE id = ?", (slot["room_id"],)).fetchone()[0]
+            options = [({"slot_id": sid, "room_id": r["id"]}, f"room {r['id']} is free")
+                       for r in run.t_find_free_rooms(slot["day"], slot["period"], kind)]
+        picked = _first_accepted(run, options) or _first_accepted(run, _moves(run, sid))
+        where = f"{slot['section']} {slot['subject_code']} {slot['day']} P{slot['period']}"
+        notes.append(f"{where}: {picked}" if picked else f"{where}: no valid substitute, room or free slot found")
+    if run.proposed:
+        run.logged = {"summary": "; ".join(notes)[:300], "reasoning": "\n".join(notes)}
+
+
+def _moves(run: AgentRun, sid: int):
+    slot = run.slots[sid]
+    if run.lab_locked(slot):
+        return
+    for day in [d for d in DAYS if not (run.inc["type"] == "absence" and d == run.inc["day"])]:
+        for period in period_numbers(run.con):
+            p = tools.propose_reschedule(sid, day=day, period=period, con=run.con)
+            if p:
+                yield p["change"], (f"move to {day} P{period} in {p['to']['room_id']} with {slot['faculty_name']}")
+
+
+def _first_accepted(run: AgentRun, options) -> Optional[str]:
+    for change, why in options:
+        if run.t_commit_change([change])["ok"]:
+            run.flush_acts()
+            return why
+    return None
+
+
+def apply_approved(con, row) -> dict:
+    """HOD approved: apply the decision's changes and its new status in ONE transaction.
+
+    Raises ClashError (nothing changed) if the timetable moved on since the proposal, or LookupError if
+    someone else already decided it. Then tells students/faculty, Telegram and Calendar.
+    """
+    changes = json.loads(row["changes"])
+    ids = sorted({c["slot_id"] for c in changes})
+    marks = ",".join("?" * len(ids))
+    try:
+        # opens the transaction; commit_change (inside apply_changes) commits it together with the slots
+        # a PARTIAL proposal leaves classes uncovered: what it covers is applied, the decision stays escalated
+        if not con.execute("UPDATE decisions SET status = ?, changes = NULL "
+                           "WHERE id = ? AND status = ? AND changes = ?",
+                           ("escalated" if row["status"] == "escalated" else "committed", row["id"], row["status"], row["changes"])).rowcount:
+            raise LookupError("already decided")
+        before = {s["id"]: s for s in fetch_slots(con, f"s.id IN ({marks})", tuple(ids))}
+        inc = con.execute("SELECT * FROM incidents WHERE id = ?", (row["incident_id"],)).fetchone()
+        if inc:
+            key = "faculty_id" if inc["type"] == "absence" else "room_id"
+            stale = [i for i in ids if i not in before or before[i][key] != inc[key] or before[i]["day"] != inc["day"]
+                     or before[i]["period"] not in json.loads(inc["periods"]) or before[i]["status"] == "cancelled"]
+            if stale:
+                raise ClashError(ClashResult(ok=False, errors=[f"slot(s) {stale} changed since this was proposed"]))
+        con.executemany("INSERT INTO applied_changes (decision_id, slot_id, kind) VALUES (?,?,?)",
+                        [(row["id"], c["slot_id"], "cancelled" if c.get("status") == "cancelled"
+                          else change_kind(before[c["slot_id"]], c)) for c in changes])
+        out = actions.apply_changes(con, changes)
+    except Exception:
+        con.rollback()
+        raise
+
+    audience = [row["reported_by"]] if row["reported_by"] else []
+
+    def step(text):
+        bus.publish("agent_step", {"decision_id": row["id"], "step": "act", "phase": "dispatch", "text": text,
+                                   "ts": datetime.now().isoformat(timespec="seconds")}, user_ids=audience)
+
+    step(f"HOD approved. Committed {len(changes)} change(s), sent {len(out['nudge_ids'])} nudge(s): "
+         + "; ".join(actions.describe(before[s["id"]], s) for s in out["slots"]))
+    edits = [c for c in changes if c.get("status") != "cancelled"]
+    kinds = [(c["slot_id"], change_kind(before[c["slot_id"]], c)) for c in edits]
+    subs = [sid for sid, kind in kinds if kind == "substituted"]
+    try:  # already committed: an external service must never turn the approval into an error
+        if subs and notify.notifier.enabled:
+            if row["status"] != "escalated":
+                tools.update_decision(row["id"], con=con, status="pending_ack")
+            reqs = notify.notifier.request_acks(row["id"], subs, con=con)
+            if reqs:
+                sent = [r["faculty_id"] for r in reqs if r["message_id"]]
+                unsent = [r["faculty_id"] for r in reqs if not r["message_id"]]
+                step("Telegram: asked " + (", ".join(sent) or "nobody")
+                     + f" to confirm (reply within {notify.escalation_minutes():g} min)"
+                     + (f"; not reachable: {', '.join(unsent)}" if unsent else ""))
+            elif row["status"] != "escalated":
+                tools.update_decision(row["id"], con=con, status="committed")
+    except Exception:
+        log.exception("could not send Telegram ack requests")
+    if subs and not con.execute("SELECT 1 FROM ack_requests WHERE decision_id = ?", (row["id"],)).fetchone():
+        with con:
+            con.execute("UPDATE decisions SET reasoning = COALESCE(reasoning, '') || ? WHERE id = ?",
+                        ("\n\nCommitted but NOT CONFIRMED: no substitute was asked (Telegram off).", row["id"]))
+    try:
+        if gcal.calendar.sync_slots(row["id"], kinds, audience) is not None:
+            step(f"Calendar: saving {len(kinds)} event(s) in the background")
+    except Exception:
+        log.exception("could not queue calendar sync")
+    return tools.get_decision(row["id"], con=con)
 
 
 def _short_result(result: Any) -> str:
@@ -501,11 +626,14 @@ def run_incident(incident_id: int, decision_id: int, client=None) -> Optional[di
             try:
                 run_loop(run, client or make_client())
             except AgentUnavailable as e:
-                return run.finish(failure=f"Gemini unavailable ({e})")
+                reason = f"Gemini unavailable ({e})"
             except Exception as e:
                 log.exception("agent loop failed")
-                return run.finish(failure=f"Gemini error ({type(e).__name__}: {str(e)[:160]})")
-            return run.finish()
+                reason = f"Gemini error ({type(e).__name__}: {str(e)[:160]})"
+            else:
+                return run.finish()
+            run_fallback(run, reason)
+            return run.finish(failure=None if run.proposed else f"{reason}, and the rule-based fallback found no option")
     except Exception:  # last resort: DB problems etc. Keep the server alive.
         log.exception("run_incident crashed")
         try:

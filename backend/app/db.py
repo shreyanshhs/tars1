@@ -35,6 +35,21 @@ def use_db(con: Optional[sqlite3.Connection] = None) -> Iterator[sqlite3.Connect
         own.close()
 
 
+def period_numbers(con: sqlite3.Connection) -> list[int]:
+    """Periods of the seeded timetable (6 by default, 7 for BMSIT)."""
+    return [r[0] for r in con.execute("SELECT period FROM periods ORDER BY period")]
+
+
+def ensure_tables() -> None:
+    """Add tables that a tars.db seeded by an older version doesn't have yet (nothing else is touched)."""
+    sql = Path(__file__).with_name("schema.sql").read_text(encoding="utf-8")
+    with use_db() as con, con:
+        if con.execute("SELECT 1 FROM sqlite_master WHERE name = 'decisions'").fetchone():  # seeded at all?
+            for table in ("applied_changes", "nptel_requests", "nptel_submissions"):
+                i = sql.index(f"CREATE TABLE {table} (")
+                con.execute(sql[i:sql.index(";", i)].replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1))
+
+
 def get_db() -> Iterator[sqlite3.Connection]:
     con = connect()
     try:

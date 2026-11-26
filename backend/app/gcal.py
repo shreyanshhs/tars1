@@ -58,7 +58,7 @@ def event_body(slot: dict, kind: str, decision: dict, room_name: Optional[str],
                now: Optional[datetime] = None) -> dict:
     d = slot_date(slot["day"], slot["end"], now).isoformat()
     who = slot["faculty_name"]
-    title = {"substituted": f"{slot['subject_code']} ({slot['section']}): {who} substituting",
+    title = {"substituted": f"{slot['subject_code']} ({slot['section']}): {who} approved as substitute (not confirmed)",
              "moved": f"{slot['subject_code']} ({slot['section']}): rescheduled, {who}"}.get(
         kind, f"{slot['subject_code']} ({slot['section']}): {who}")
     reasoning = (decision.get("reasoning") or "").strip()
@@ -188,7 +188,10 @@ class Calendar:
                     self._step(decision_id, f"Calendar: could not save {label} (logged, schedule unaffected)", audience)
                     continue
                 with con:
-                    con.execute("UPDATE slots SET gcal_event_id = ? WHERE id = ?", (ev["id"], slot_id))
+                    saved = con.execute("UPDATE slots SET gcal_event_id = ? WHERE id = ?", (ev["id"], slot_id)).rowcount
+                if not saved:  # slot replaced (timetable import) while saving: don't orphan the event
+                    self._delete([ev["id"]])
+                    continue
                 link = ev.get("htmlLink")
                 if link and not decision.get("calendar_link"):
                     decision = tools.update_decision(decision_id, con=con, calendar_link=link)
@@ -208,8 +211,8 @@ class Calendar:
             except Exception as e:
                 if _status(e) in (404, 410):          # already gone: fine
                     continue
-                log.error("Calendar delete failed: %s (HTTP %s)", type(e).__name__, _status(e))
-        log.info("demo reset: deleted %d TARS calendar event(s)", n)
+                log.error("Calendar delete failed for event %s: %s (HTTP %s)", eid, type(e).__name__, _status(e))
+        log.info("deleted %d TARS calendar event(s)", n)
         return n
 
 

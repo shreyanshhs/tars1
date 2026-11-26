@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
-from conftest import H, slot_id
+from conftest import H, approve, slot_id
 from fastapi.testclient import TestClient
 from test_agent import DEMO, FakeClient, demo_script
 
@@ -107,6 +107,7 @@ def api(db):
 def run_demo(api, cal_obj):
     bus.recent.clear()
     did = api.post("/api/incidents", json=DEMO, headers=H("H01")).json()["decision_id"]
+    approve(api, did)
     cal_obj.wait_idle()
     return did
 
@@ -150,7 +151,7 @@ def test_event_body(db):
     ds = tools.get_timetable(section="CSE-A", day="MON", con=db)[1]
     decision = {"id": 7, "status": "pending_ack", "summary": "DS covered", "reasoning": "71% < 75%. " * 400}
     b = gcal.event_body({**ds, "faculty_name": "Sub Name"}, "substituted", decision, "Room 101", now=ist(2026, 11, 25))
-    assert b["summary"] == "DS (CSE-A): Sub Name substituting"
+    assert b["summary"] == "DS (CSE-A): Sub Name approved as substitute (not confirmed)"
     assert b["start"] == {"dateTime": "2026-11-30T09:55:00", "timeZone": "Asia/Kolkata"}   # next Monday
     assert b["end"] == {"dateTime": "2026-11-30T10:50:00", "timeZone": "Asia/Kolkata"}
     early_mon = gcal.event_body(ds, "substituted", decision, None, now=ist(2026, 11, 23, 9, 0))
@@ -170,7 +171,7 @@ def test_demo_creates_events_and_sets_calendar_link(api, db, cal):
     inserts = ev.of("insert")
     assert len(inserts) == 2 and all(x[1] == CAL for x in inserts)
     titles = sorted(x[3]["summary"] for x in inserts)
-    assert titles[0].startswith("DS (CSE-A): ") and titles[0].endswith(" substituting")
+    assert titles[0].startswith("DS (CSE-A): ") and titles[0].endswith(" approved as substitute (not confirmed)")
     assert titles[1].startswith("DSL (CSE-A): ")
     ds = slot_id(db, "CSE-A", "MON", 2)
     ds_body = next(x[3] for x in inserts if x[3]["summary"].startswith("DS ("))
@@ -182,7 +183,7 @@ def test_demo_creates_events_and_sets_calendar_link(api, db, cal):
     assert set(ids) == {ds, slot_id(db, "CSE-A", "MON", 1)} and len(set(ids.values())) == 2
 
     d = tools.get_decision(did, con=db)
-    assert d["status"] == "pending_ack" and d["calendar_link"].startswith("https://calendar.example/event?eid=ev")
+    assert d["status"] == "committed" and d["calendar_link"].startswith("https://calendar.example/event?eid=ev")
     assert api.get("/api/decisions", headers=H("H01")).json()[0]["calendar_link"] == d["calendar_link"]
     upd = [m["data"] for m in bus.recent if m["event"] == "decision_updated" and m["data"].get("calendar_link")]
     assert upd and upd[-1]["calendar_link"] == d["calendar_link"]
@@ -221,10 +222,11 @@ def test_slow_calendar_does_not_block_the_agent(api, db, cal):
     ev.delay = 1.5
     t0 = time.time()
     r = api.post("/api/incidents", json=DEMO, headers=H("H01"))
-    elapsed = time.time() - t0
     did = r.json()["decision_id"]
+    approve(api, did)
+    elapsed = time.time() - t0
     assert elapsed < 1.2, elapsed                                           # agent finished without waiting
-    assert tools.get_decision(did, con=db)["status"] == "pending_ack"
+    assert tools.get_decision(did, con=db)["status"] == "committed"
     assert tools.get_decision(did, con=db)["calendar_link"] is None         # not yet
     c.wait_idle()
     assert tools.get_decision(did, con=db)["calendar_link"] is not None     # arrives later
@@ -235,7 +237,7 @@ def test_api_failure_is_logged_not_raised(api, db, cal, caplog):
     ev.fail_insert = FakeHttpError(500)
     did = run_demo(api, c)
     d = tools.get_decision(did, con=db)
-    assert d["status"] == "pending_ack" and d["calendar_link"] is None
+    assert d["status"] == "committed" and d["calendar_link"] is None
     assert db.execute("SELECT COUNT(*) FROM slots WHERE gcal_event_id IS NOT NULL").fetchone()[0] == 0
     assert "Calendar insert failed" in caplog.text and CAL not in caplog.text
     assert any(x["text"].startswith("Calendar: could not save") and x["phase"] == "dispatch" for x in steps(did))
@@ -247,7 +249,7 @@ def test_disabled_without_calendar_id(api, db, monkeypatch, caplog):
     monkeypatch.setattr(gcal, "calendar", c)
     monkeypatch.setattr(agent, "make_client", lambda: FakeClient(demo_script(db)))
     did = run_demo(api, c)
-    assert tools.get_decision(did, con=db)["status"] == "pending_ack"
+    assert tools.get_decision(did, con=db)["status"] == "committed"
     assert not [x for x in steps(did) if x["text"].startswith("Calendar")]
     assert "Google Calendar disabled: GOOGLE_CALENDAR_ID not set" in caplog.text
 
@@ -302,7 +304,8 @@ def test_reset_right_after_demo_leaves_no_orphans(api, db, cal, monkeypatch):
     monkeypatch.setenv("TARS_DEMO_MODE", "1")
     c, ev = cal
     ev.delay = 0.5
-    api.post("/api/incidents", json=DEMO, headers=H("H01"))          # saves now running in the background
+    approve(api, api.post("/api/incidents", json=DEMO, headers=H("H01")).json()["decision_id"])  # saves now running
+    assert c._futures
     assert api.post("/api/admin/reset-demo", headers=H("H01")).status_code == 200
     c.wait_idle()
     assert set(ev.store) == {"someone-elses-event"}                     # both TARS events deleted

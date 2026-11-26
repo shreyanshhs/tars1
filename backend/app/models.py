@@ -60,7 +60,8 @@ class Decision(BaseModel):
     summary: str
     reasoning: Optional[str] = None
     affected_slot_ids: list[int]
-    status: Literal["proposed", "committed", "pending_ack", "acknowledged", "escalated", "rejected"]
+    status: Literal["proposed", "committed", "pending_ack", "acknowledged", "escalated", "rejected",
+                    "closed_unresolved"]
     calendar_link: Optional[str]     # v0.6: Google Calendar htmlLink once the slot is in the calendar, else null
 
 
@@ -113,8 +114,13 @@ class Today(BaseModel):
 
 
 class Stats(BaseModel):
-    classes_lost: int
-    rescued: int
+    """Decision counts; see docs/API_CONTRACT.md for the definitions."""
+    classes_lost: int             # cancelled classes (slots)
+    rescued: int                  # substitutes committed and every one accepted; no cancelled class
+    pending_confirmation: int     # committed, but not every substitute has accepted
+    cancelled: int                # decisions with an approved cancellation
+    escalated: int                # unresolved coverage needing intervention (includes PARTIAL)
+    closed_unresolved: int        # closed by the HOD without coverage
     nudges_acted: int
     avg_response_s: float
 
@@ -131,6 +137,15 @@ class FacultyUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=80)
 
     @field_validator("name", mode="before")
+    @classmethod
+    def _strip(cls, v):
+        return v.strip() if isinstance(v, str) else v
+
+
+class CloseRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason", mode="before")
     @classmethod
     def _strip(cls, v):
         return v.strip() if isinstance(v, str) else v
@@ -173,3 +188,82 @@ class ResetResult(BaseModel):
 class ErrorResponse(BaseModel):
     error: str
     detail: str
+
+
+class NptelRequest(BaseModel):
+    """Seeded requests are simulated (the title says so)."""
+    id: int
+    faculty_id: str
+    faculty_name: str
+    title: str
+    item: str
+    sections: list[str]
+    due_date: str            # YYYY-MM-DD
+    total_students: int
+    submitted_count: int     # verified + flagged
+    verified_count: int
+    flagged_count: int
+    created_at: str
+
+
+class NptelSubmission(BaseModel):
+    id: int
+    request_id: int
+    student_name: str
+    usn: str
+    section: str
+    course_name: str
+    score: int
+    certificate_id: str
+    status: Literal["pending", "verified", "flagged"]
+    uploaded_at: str
+    flags: list[str] = []
+
+
+class NptelNudgeResult(BaseModel):
+    nudged_count: int        # nudges really created now; students without an account or already reminded aren't counted
+
+
+class ImportRow(BaseModel):
+    section: str
+    day: str
+    period: int
+    subject: Optional[str] = None
+    subject_code: Optional[str] = None
+    faculty: Optional[str] = None
+    faculty_id: Optional[str] = None
+    room: Optional[str] = None
+    room_id: Optional[str] = None
+
+
+class ImportRequest(BaseModel):
+    rows: list[ImportRow] = Field(min_length=1)
+    replace_sections: Optional[list[str]] = None
+
+
+class ImportValidationError(BaseModel):
+    row: Optional[int] = None
+    field: Optional[str] = None
+    value: Optional[str] = None
+    type: str
+    message: str
+
+
+class ImportSummary(BaseModel):
+    total_rows: int
+    sections: list[str]
+    errors: int
+
+
+class ImportResult(BaseModel):
+    valid: bool
+    errors: list[ImportValidationError] = []
+    summary: ImportSummary
+    imported: Optional[int] = None
+    preview: Optional[list[Slot]] = None
+
+
+class ImportErrorResponse(ErrorResponse):
+    """422 from the import. errors/summary are set only when the rows themselves failed validation."""
+    errors: Optional[list[ImportValidationError]] = None
+    summary: Optional[ImportSummary] = None

@@ -26,7 +26,8 @@ def test_hod_only(client):
         assert client.get(path, headers=H("F01")).status_code == 403
         assert client.get(path, headers=H("H01")).status_code == 200
     assert client.get("/api/stats", headers=H("H01")).json() == {
-        "classes_lost": 0, "rescued": 0, "nudges_acted": 0, "avg_response_s": 0}
+        "classes_lost": 0, "rescued": 0, "pending_confirmation": 0, "cancelled": 0, "escalated": 0,
+        "closed_unresolved": 0, "nudges_acted": 0, "avg_response_s": 0}
 
 
 def test_timetable_demo_scenario(client):

@@ -17,8 +17,15 @@ def create_nudge(con: sqlite3.Connection, user_id: str, kind: str, title: str, b
     return nudge
 
 
+def _approved(after: dict, where: str = "") -> str:
+    name = after["faculty_name"]
+    return f"the HOD approved {name} as substitute{where}. {name} has not confirmed yet."
+
+
 def describe(before: dict, after: dict) -> str:
-    """Human sentence for students, e.g. 'Data Structures on MON at 09:55 is now with <faculty name>, same room.'"""
+    """Human sentence for students. HOD approval isn't the substitute's acceptance, so a substitution never reads as settled:
+    'Data Structures on MON at 09:55: the HOD approved <faculty name> as substitute, same room. <faculty name> has not
+    confirmed yet.'"""
     subj = after["subject_name"]
     when_before = f"{before['day']} at {before['start']}"
     if after["status"] == "cancelled":
@@ -28,10 +35,9 @@ def describe(before: dict, after: dict) -> str:
     new_room = before["room_id"] != after["room_id"]
     if moved:
         s = f"{subj} moved from {when_before} to {after['day']} at {after['start']} in {after['room_id']}"
-        return s + (f" with {after['faculty_name']}." if new_fac else ".")
+        return s + (f". {_approved(after)}" if new_fac else ".")
     if new_fac:
-        return (f"{subj} on {when_before} is now with {after['faculty_name']}"
-                + (f" in {after['room_id']}." if new_room else ", same room."))
+        return f"{subj} on {when_before}: " + _approved(after, f" in {after['room_id']}" if new_room else ", same room")
     if new_room:
         return f"{subj} on {when_before} moved to room {after['room_id']}."
     return f"{subj} on {when_before} was updated."
@@ -47,14 +53,17 @@ def apply_changes(con: sqlite3.Connection, changes: list[dict]) -> dict:
     for after in out["slots"]:
         b = before[after["id"]]
         text = describe(b, after)
+        substituted = after["faculty_id"] != b["faculty_id"] and after["status"] != "cancelled"
         for (uid,) in con.execute("SELECT id FROM users WHERE role = 'student' AND section = ?",
                                   (after["section"],)).fetchall():
-            nudges.append(create_nudge(con, uid, "replan", "TARS re-planned your day", text))
-        if after["faculty_id"] != b["faculty_id"] and after["status"] != "cancelled":
+            nudges.append(create_nudge(con, uid, "replan", "Substitute approved, not confirmed" if substituted
+                                       else "TARS re-planned your day", text))
+        if substituted:
             nudges.append(create_nudge(
-                con, after["faculty_id"], "replan", "You're covering a class",
+                con, after["faculty_id"], "replan", "HOD approved you as substitute: not confirmed",
                 f"{after['section']} {after['subject_name']}, {after['day']} {after['start']}–{after['end']} "
-                f"in {after['room_id']} (for {b['faculty_name']})."))
+                f"in {after['room_id']} (for {b['faculty_name']}). This is the HOD's approval, not your acceptance. "
+                "If you can't cover it, tell the HOD."))
 
     for section in out["sections"]:
         sec_slots = [s for s in out["slots"] if s["section"] == section]

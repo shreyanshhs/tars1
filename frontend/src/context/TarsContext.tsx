@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
+import { checkBackendHealth, api, IDENTITY_ADAPTER } from '../services/api';
+import type { TimetableSlot } from '../types/api';
 import type {
   Role,
   ViewTab,
@@ -16,7 +18,7 @@ import type {
 
 interface TarsContextType {
   role: Role;
-  setRole: (role: Role) => void;
+  setRole: (role: Role, facultyId?: string) => void;
   currentView: ViewTab;
   setCurrentView: (view: ViewTab) => void;
   unreadNudgesCount: number;
@@ -44,6 +46,49 @@ interface TarsContextType {
   scheduleSlots: ScheduleGridSlot[];
   facultyStatuses: FacultyStatus[];
   roomStatuses: RoomStatus[];
+  liveTimetable: TimetableSlot[] | null;
+  timetableStatus: 'loading' | 'live' | 'mock' | 'unavailable';
+  refreshTimetable: () => Promise<void>;
+
+  // Persona / Faculty identity
+  activeFacultyId: string;
+  setActiveFacultyId: (id: string) => void;
+
+  // Substitute Acceptance state (Safeguards 1-10)
+  simulatedCoverStatus: 'pending' | 'accepted' | 'declined';
+  simulatedCoverDecisionId: number | null;
+  simulatedAiStatus: 'pending' | 'accepted' | 'declined';
+  simulatedLabStatus: 'pending' | 'accepted' | 'declined';
+  acceptSubstituteCover: (target?: 'ai' | 'lab') => void;
+  declineSubstituteCover: (target?: 'ai' | 'lab') => void;
+  acceptAiCover: () => void;
+  declineAiCover: () => void;
+  acceptLabCover: () => void;
+  declineLabCover: () => void;
+
+  // Slice 1: Teacher Leave & Substitute state
+  hasActiveLeave: boolean;
+  leaveDate: string;
+  leaveType: string;
+  leaveReason: string;
+  labCovered: boolean;
+  aiCovered: boolean;
+  hodApproved: boolean;
+  hodApprovalTime: string | null;
+  studentNotified: boolean;
+  simStep: number;
+  applyLeave: (date?: string, type?: string, reason?: string) => void;
+  cancelLeave: () => void;
+  setSimStep: (step: number) => void;
+  advanceSimulation: () => void;
+  resetSimulation: () => void;
+  approveHod: (decisionId?: number | string, note?: string) => Promise<void>;
+  rejectHod: (decisionId?: number | string, note?: string) => Promise<void>;
+  resetDemo: () => Promise<boolean>;
+  backendStatus: 'connected' | 'offline';
+  backendMode: 'live' | 'offline_demo';
+  backendIncidentId: number | null;
+  backendDecisionId: number | null;
 
   // Admin state
   incidentText: string;
@@ -159,9 +204,9 @@ const initialTimeline: TodayTimelineItem[] = [
     id: 'tl-4',
     time: '14:00 – 15:30',
     title: 'Data Structures & Algorithms (CS102)',
-    subtitle: 'Dr. Menon (Substitute) - B Trees & Indexing architectures',
+    subtitle: 'Prof. Sharma • Room 302',
     location: 'North Block Rm 504',
-    status: 'Rescheduled',
+    status: 'Confirmed',
   },
   {
     id: 'tl-5',
@@ -267,7 +312,7 @@ const initialScheduleSlots: ScheduleGridSlot[] = [
   { id: 's-6', time: '10:00', day: 'MON', subject: 'Data Structures', room: 'Rm 302', faculty: 'Dr. Rao' },
   { id: 's-7', time: '10:00', day: 'TUE', subject: 'COA Architecture', room: 'Rm 401', faculty: 'Prof. Sengupta' },
   { id: 's-8', time: '10:00', day: 'WED', subject: 'Data Structures', room: 'Rm 302', faculty: 'Dr. Rao' },
-  { id: 's-9', time: '10:00', day: 'THU', subject: 'DS Study Block', room: 'Reading Rm 3', faculty: 'Self Paced', status: 're-planned', note: 'Freed from Dr. Rao leave' },
+  { id: 's-9', time: '10:00', day: 'THU', subject: 'Data Structures', room: 'Rm 302', faculty: 'Dr. Rao', status: 'normal' },
   { id: 's-10', time: '10:00', day: 'FRI', subject: 'COA Architecture', room: 'Rm 401', faculty: 'Prof. Sengupta' },
   // 11:00
   { id: 's-11', time: '11:00', day: 'MON', subject: 'Env Studies', room: 'Audi 2', faculty: 'Dr. Mukherjee' },
@@ -287,7 +332,7 @@ const initialScheduleSlots: ScheduleGridSlot[] = [
   { id: 's-21', time: '14:00', day: 'MON', subject: 'DS Lab B2', room: 'Tech Lab 3', faculty: 'Dr. Rao / TAs' },
   { id: 's-22', time: '14:00', day: 'TUE', subject: 'DL Design Lab', room: 'Hardware Lab 1', faculty: 'Prof. Gupta' },
   { id: 's-23', time: '14:00', day: 'WED', subject: 'Project Studio', room: 'Design Bay C', faculty: 'Faculty Panel' },
-  { id: 's-24', time: '14:00', day: 'THU', subject: 'Data Structures', room: 'North Block Rm 504', faculty: 'Dr. Menon (Sub)', status: 're-planned', note: 'Moved from 10:00 AM' },
+  { id: 's-24', time: '14:00', day: 'THU', subject: 'Data Structures', room: 'North Block Rm 504', faculty: 'Dr. Rao', status: 'normal' },
   { id: 's-25', time: '14:00', day: 'FRI', subject: 'Project Studio', room: 'Design Bay C', faculty: 'Faculty Panel' },
   // 15:00
   { id: 's-26', time: '15:00', day: 'MON', subject: 'Remedial Math', room: 'Rm 402', faculty: 'Dr. Sharma' },
@@ -383,9 +428,102 @@ const initialDiff: RelocationDiff = {
 const TarsContext = createContext<TarsContextType | undefined>(undefined);
 
 export const TarsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [role, setRole] = useState<Role>('student');
-  const [currentView, setCurrentView] = useState<ViewTab>('today');
-  const [autonomousScheduleBannerVisible, setAutonomousScheduleBannerVisible] = useState(true);
+  const resetRequestedRef = React.useRef(
+    typeof window !== 'undefined' && window.location.search.includes('reset=1')
+  );
+
+  if (resetRequestedRef.current) {
+    try {
+      localStorage.removeItem('tars_has_leave');
+      localStorage.removeItem('tars_hod_approved');
+      localStorage.removeItem('tars_hod_approval_time');
+      localStorage.removeItem('tars_student_notified');
+      localStorage.removeItem('tars_sim_step');
+      localStorage.removeItem('tars_incident_id');
+      localStorage.removeItem('tars_decision_id');
+      localStorage.removeItem('tars_token');
+      localStorage.removeItem('tars_active_faculty_id');
+      localStorage.removeItem('tars_simulated_cover_acceptance');
+    } catch {
+      // ignore
+    }
+  }
+  const [role, setRoleState] = useState<Role>(() => {
+    try {
+      return (localStorage.getItem('tars_role') as Role) || 'faculty';
+    } catch {
+      return 'faculty';
+    }
+  });
+  const [activeFacultyId, setActiveFacultyIdState] = useState<string>(() => {
+    try {
+      return localStorage.getItem('tars_active_faculty_id') || 'F_CDB';
+    } catch {
+      return 'F_CDB';
+    }
+  });
+
+  const setActiveFacultyId = (id: string) => {
+    try {
+      localStorage.setItem('tars_active_faculty_id', id);
+    } catch {
+      // ignore
+    }
+    setActiveFacultyIdState(id);
+  };
+
+  const [currentView, setCurrentViewState] = useState<ViewTab>(() => {
+    try {
+      return (localStorage.getItem('tars_view') as ViewTab) || 'home';
+    } catch {
+      return 'home';
+    }
+  });
+
+  const loginForRole = async (r: Role, facultyId?: string, password?: string) => {
+    let loginId = IDENTITY_ADAPTER.roleLoginId[r];
+    if (r === 'faculty') {
+      loginId = facultyId || activeFacultyId || 'F_CDB';
+    }
+    const pw = password || (typeof localStorage !== 'undefined' ? localStorage.getItem(`tars_pw_${loginId}`) : null) || 'bmsit';
+    try {
+      const res = await api.auth.login(loginId, pw);
+      if (res && res.token) {
+        setBackendStatus('connected');
+        setBackendMode('live');
+        return true;
+      }
+    } catch (err) {
+      console.warn(`[TARS Auth] Live login failed for ${loginId} (${r}); maintaining offline demo fallback:`, err);
+    }
+    return false;
+  };
+
+  const setRole = (r: Role, facultyId?: string, password?: string) => {
+    try {
+      localStorage.setItem('tars_role', r);
+      if (r === 'faculty' && facultyId) {
+        localStorage.setItem('tars_active_faculty_id', facultyId);
+        setActiveFacultyIdState(facultyId);
+      }
+    } catch {
+      // ignore storage error
+    }
+    setRoleState(r);
+    loginForRole(r, facultyId, password).then(() => {
+      refreshTimetable();
+    });
+  };
+
+  const setCurrentView = (v: ViewTab) => {
+    try {
+      localStorage.setItem('tars_view', v);
+    } catch {
+      // ignore storage error
+    }
+    setCurrentViewState(v);
+  };
+  const [autonomousScheduleBannerVisible, setAutonomousScheduleBannerVisible] = useState(false);
   const [timelineItems, setTimelineItems] = useState<TodayTimelineItem[]>(initialTimeline);
   const [nudges, setNudges] = useState<Nudge[]>(initialNudges);
   const [selectedNudgeId, setSelectedNudgeId] = useState<string>('nudge-1');
@@ -395,6 +533,578 @@ export const TarsProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [facultyStatuses] = useState<FacultyStatus[]>(initialFacultyStatus);
   const [roomStatuses] = useState<RoomStatus[]>(initialRoomStatus);
   const [attendanceCourses] = useState<AttendanceCourse[]>(initialAttendance);
+  const [liveTimetable, setLiveTimetable] = useState<TimetableSlot[] | null>(null);
+  const [timetableStatus, setTimetableStatus] = useState<'loading' | 'live' | 'mock' | 'unavailable'>('loading');
+
+  const refreshTimetable = useCallback(async () => {
+    try {
+      const health = await checkBackendHealth();
+      if (health.online) {
+        setBackendStatus('connected');
+        setBackendMode(health.mode);
+        const data = await api.schedule.getTimetable('CSE-10');
+        if (Array.isArray(data) && data.length > 0) {
+          const validSlots = data.filter((s) => s.section === 'CSE-10' && !s.section.startsWith('BUSY-'));
+          const normalizedSlots = validSlots.map((s) => {
+            if (s.faculty_id === 'F_SMP' || s.faculty_name === 'Faculty SMP') {
+              return { ...s, faculty_name: 'Mr. Syed Matheen Pasha' };
+            }
+            if (s.faculty_id === 'F_GPL' || s.faculty_name === 'Faculty GPL') {
+              return { ...s, faculty_name: 'Mrs. Geetha P L' };
+            }
+            return s;
+          });
+          setLiveTimetable(normalizedSlots);
+          setTimetableStatus('live');
+          return;
+        }
+        setLiveTimetable(null);
+        setTimetableStatus('unavailable');
+      } else {
+        setBackendStatus('offline');
+        setBackendMode('offline_demo');
+        const mockData = await api.schedule.getTimetable('CSE-10');
+        setLiveTimetable(mockData);
+        setTimetableStatus('mock');
+      }
+    } catch {
+      setLiveTimetable(null);
+      setTimetableStatus('unavailable');
+    }
+  }, []);
+
+  // Slice 1: Teacher Leave & Substitute state (Safeguards 1-10)
+  interface SimulatedCoverRecord {
+    decisionId: number | null;
+    incidentId: number | null;
+    aiStatus: 'pending' | 'accepted' | 'declined';
+    labStatus: 'pending' | 'accepted' | 'declined';
+    timestamp: string | null;
+    label: string;
+  }
+
+  const [simulatedCoverState, setSimulatedCoverState] = useState<SimulatedCoverRecord>(() => {
+    try {
+      const stored = localStorage.getItem('tars_simulated_cover_acceptance');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return {
+          decisionId: parsed.decisionId ?? null,
+          incidentId: parsed.incidentId ?? null,
+          aiStatus: parsed.aiStatus || 'pending',
+          labStatus: parsed.labStatus || 'pending',
+          timestamp: parsed.timestamp || null,
+          label: parsed.label || 'Simulated acceptance — Telegram not connected',
+        };
+      }
+    } catch {
+      // ignore
+    }
+    return {
+      decisionId: null,
+      incidentId: null,
+      aiStatus: 'pending',
+      labStatus: 'pending',
+      timestamp: null,
+      label: 'Simulated acceptance — Telegram not connected',
+    };
+  });
+
+  const [hasActiveLeave, setHasActiveLeaveState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('tars_has_leave') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [leaveDate, setLeaveDate] = useState<string>(() => {
+    try {
+      return localStorage.getItem('tars_leave_date') || 'Thursday, 3 Dec 2026';
+    } catch {
+      return 'Thursday, 3 Dec 2026';
+    }
+  });
+
+  const [leaveType, setLeaveType] = useState<string>(() => {
+    try {
+      return localStorage.getItem('tars_leave_type') || 'Medical Leave';
+    } catch {
+      return 'Medical Leave';
+    }
+  });
+
+  const [leaveReason, setLeaveReason] = useState<string>(() => {
+    try {
+      return localStorage.getItem('tars_leave_reason') || 'High fever and viral infection';
+    } catch {
+      return 'High fever and viral infection';
+    }
+  });
+
+  const [simStep, setSimStepState] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('tars_sim_step');
+      return saved ? parseInt(saved, 10) : 2;
+    } catch {
+      return 2;
+    }
+  });
+
+  const [hodApproved, setHodApprovedState] = useState<boolean>(() => {
+    try {
+      const hasLeave = localStorage.getItem('tars_has_leave') === 'true';
+      return hasLeave && localStorage.getItem('tars_hod_approved') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [hodApprovalTime, setHodApprovalTime] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('tars_hod_approval_time') || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [studentNotified, setStudentNotified] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('tars_student_notified') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [backendStatus, setBackendStatus] = useState<'connected' | 'offline'>('offline');
+  const [backendMode, setBackendMode] = useState<'live' | 'offline_demo'>('offline_demo');
+  const [backendIncidentId, setBackendIncidentId] = useState<number | null>(() => {
+    const id = localStorage.getItem('tars_incident_id');
+    return id ? Number(id) : null;
+  });
+  const [backendDecisionId, setBackendDecisionId] = useState<number | null>(() => {
+    const id = localStorage.getItem('tars_decision_id');
+    return id ? Number(id) : null;
+  });
+
+  useEffect(() => {
+    if (resetRequestedRef.current) {
+      resetRequestedRef.current = false;
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+      api.auth.login('H_SKB').then(async (res) => {
+        if (res && res.token) {
+          try {
+            await fetch('http://127.0.0.1:8000/api/admin/reset-demo', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${res.token}` },
+            });
+            loginForRole(role).then(() => {
+              refreshTimetable();
+            });
+          } catch {
+            // ignore
+          }
+        }
+      }).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    checkBackendHealth().then((health) => {
+      setBackendStatus(health.online ? 'connected' : 'offline');
+      setBackendMode(health.mode);
+      if (health.online) {
+        loginForRole(role).then(() => {
+          refreshTimetable();
+        });
+      } else {
+        refreshTimetable();
+      }
+    });
+  }, [role, refreshTimetable]);
+
+  const acceptCover = (target: 'ai' | 'lab' = 'ai') => {
+    const currentDecId =
+      backendDecisionId ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('tars_decision_id')
+        ? Number(localStorage.getItem('tars_decision_id'))
+        : null);
+    const currentIncId =
+      backendIncidentId ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('tars_incident_id')
+        ? Number(localStorage.getItem('tars_incident_id'))
+        : null);
+
+    setSimulatedCoverState((prev) => {
+      const isSameDec = currentDecId !== null && prev.decisionId === currentDecId;
+      const nextAi = target === 'ai' ? 'accepted' : (isSameDec ? prev.aiStatus : 'pending');
+      const nextLab = target === 'lab' ? 'accepted' : (isSameDec ? prev.labStatus : 'pending');
+      const record: SimulatedCoverRecord = {
+        decisionId: currentDecId,
+        incidentId: currentIncId,
+        aiStatus: nextAi,
+        labStatus: nextLab,
+        timestamp: new Date().toISOString(),
+        label: 'Simulated acceptance — Telegram not connected',
+      };
+      try {
+        localStorage.setItem('tars_simulated_cover_acceptance', JSON.stringify(record));
+      } catch {
+        // ignore
+      }
+      return record;
+    });
+    setSimStepState(3);
+  };
+
+  const declineCover = (target: 'ai' | 'lab' = 'ai') => {
+    const currentDecId =
+      backendDecisionId ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('tars_decision_id')
+        ? Number(localStorage.getItem('tars_decision_id'))
+        : null);
+    const currentIncId =
+      backendIncidentId ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('tars_incident_id')
+        ? Number(localStorage.getItem('tars_incident_id'))
+        : null);
+
+    setSimulatedCoverState((prev) => {
+      const isSameDec = currentDecId !== null && prev.decisionId === currentDecId;
+      const nextAi = target === 'ai' ? 'declined' : (isSameDec ? prev.aiStatus : 'pending');
+      const nextLab = target === 'lab' ? 'declined' : (isSameDec ? prev.labStatus : 'pending');
+      const record: SimulatedCoverRecord = {
+        decisionId: currentDecId,
+        incidentId: currentIncId,
+        aiStatus: nextAi,
+        labStatus: nextLab,
+        timestamp: new Date().toISOString(),
+        label: 'Simulated acceptance — Telegram not connected',
+      };
+      try {
+        localStorage.setItem('tars_simulated_cover_acceptance', JSON.stringify(record));
+      } catch {
+        // ignore
+      }
+      return record;
+    });
+    setSimStepState(2);
+  };
+
+  const acceptSubstituteCover = (target: 'ai' | 'lab' = 'ai') => acceptCover(target);
+  const declineSubstituteCover = (target: 'ai' | 'lab' = 'ai') => declineCover(target);
+  const acceptAiCover = () => acceptCover('ai');
+  const declineAiCover = () => declineCover('ai');
+  const acceptLabCover = () => acceptCover('lab');
+  const declineLabCover = () => declineCover('lab');
+
+  // Safeguard 4 & 5: Tie BOTH acceptance records to exact active incident ID and backend decision ID.
+  // In live mode, null decision IDs must NEVER count as valid acceptance.
+  const activeDecId =
+    backendDecisionId ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('tars_decision_id')
+      ? Number(localStorage.getItem('tars_decision_id'))
+      : null);
+
+  const activeIncId =
+    backendIncidentId ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('tars_incident_id')
+      ? Number(localStorage.getItem('tars_incident_id'))
+      : null);
+
+  const isLiveDecisionValid =
+    backendMode === 'live' && backendStatus === 'connected'
+      ? (activeDecId !== null &&
+         simulatedCoverState.decisionId === activeDecId &&
+         activeIncId !== null &&
+         simulatedCoverState.incidentId === activeIncId)
+      : true;
+
+  const aiCovered =
+    hasActiveLeave &&
+    isLiveDecisionValid &&
+    simulatedCoverState.aiStatus === 'accepted';
+
+  // Safeguard 5 & 6: Active leave alone NEVER counts as lab coverage. Geetha must explicitly accept.
+  const labCovered =
+    hasActiveLeave &&
+    isLiveDecisionValid &&
+    simulatedCoverState.labStatus === 'accepted';
+
+  const setSimStep = (step: number) => {
+    if (backendStatus === 'connected' && backendMode === 'live') {
+      // In live mode, simulation step changes must not grant live approval
+      setSimStepState(step);
+      return;
+    }
+    try {
+      localStorage.setItem('tars_sim_step', step.toString());
+      if (step >= 4) {
+        localStorage.setItem('tars_hod_approved', 'true');
+        setHodApprovedState(true);
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        localStorage.setItem('tars_hod_approval_time', time);
+        setHodApprovalTime(time);
+        localStorage.setItem('tars_student_notified', 'true');
+        setStudentNotified(true);
+      }
+    } catch {
+      // ignore
+    }
+    setSimStepState(step);
+  };
+
+  const advanceSimulation = () => {
+    const next = simStep === 2 ? 3 : 4;
+    setSimStep(next);
+  };
+
+  const resetSimulation = () => {
+    setSimStep(2);
+    setHodApprovedState(false);
+    setHodApprovalTime(null);
+    setStudentNotified(false);
+    try {
+      localStorage.removeItem('tars_hod_approved');
+      localStorage.removeItem('tars_hod_approval_time');
+      localStorage.removeItem('tars_student_notified');
+      localStorage.removeItem('tars_simulated_cover_acceptance');
+    } catch {
+      // ignore
+    }
+    setSimulatedCoverState({
+      decisionId: null,
+      incidentId: null,
+      aiStatus: 'pending',
+      labStatus: 'pending',
+      timestamp: null,
+      label: 'Simulated acceptance — Telegram not connected',
+    });
+    refreshTimetable();
+  };
+
+  const applyLeave = async (date?: string, type?: string, reason?: string) => {
+    const d = date || 'Thursday, 3 Dec 2026';
+    const t = type || 'Medical Leave';
+    const r = reason || 'High fever and viral infection';
+
+    // Ensure we have a valid bearer token for F_CDB before calling live incident creation
+    await loginForRole('faculty', 'F_CDB');
+
+    // Call api.leave.applyLeave to attempt live backend POST /api/incidents
+    const res = await api.leave.applyLeave({ date: d, type: t, reason: r });
+    if (res && res.decision_id) {
+      setBackendStatus('connected');
+      setBackendMode('live');
+      setBackendIncidentId(res.incident_id || null);
+      setBackendDecisionId(res.decision_id);
+      setHasActiveLeaveState(true);
+      setLeaveDate(d);
+      setLeaveType(t);
+      setLeaveReason(r);
+      setSimStepState(2);
+      setHodApprovedState(false);
+      setHodApprovalTime(null);
+      setStudentNotified(false);
+
+      setSimulatedCoverState({
+        decisionId: res.decision_id,
+        incidentId: res.incident_id || null,
+        aiStatus: 'pending',
+        labStatus: 'pending',
+        timestamp: null,
+        label: 'Simulated acceptance — Telegram not connected',
+      });
+
+      try {
+        localStorage.setItem('tars_has_leave', 'true');
+        localStorage.setItem('tars_leave_date', d);
+        localStorage.setItem('tars_leave_type', t);
+        localStorage.setItem('tars_leave_reason', r);
+        localStorage.setItem('tars_sim_step', '2');
+        localStorage.setItem('tars_decision_id', res.decision_id.toString());
+        if (res.incident_id) {
+          localStorage.setItem('tars_incident_id', res.incident_id.toString());
+        }
+        localStorage.removeItem('tars_hod_approved');
+        localStorage.removeItem('tars_hod_approval_time');
+        localStorage.removeItem('tars_student_notified');
+      } catch {
+        // ignore
+      }
+      return res;
+    } else if (backendMode === 'offline_demo' || import.meta.env.VITE_USE_MOCK !== 'false') {
+      setHasActiveLeaveState(true);
+      setLeaveDate(d);
+      setLeaveType(t);
+      setLeaveReason(r);
+      setSimStepState(2);
+      setHodApprovedState(false);
+      setHodApprovalTime(null);
+      setStudentNotified(false);
+      return res;
+    } else {
+      throw new Error('Leave submission failed: Backend did not return a valid decision ID');
+    }
+  };
+
+  const cancelLeave = () => {
+    setHasActiveLeaveState(false);
+    setSimStepState(2);
+    setHodApprovedState(false);
+    setHodApprovalTime(null);
+    setStudentNotified(false);
+    setBackendIncidentId(null);
+    setBackendDecisionId(null);
+    setSimulatedCoverState({
+      decisionId: null,
+      incidentId: null,
+      aiStatus: 'pending',
+      labStatus: 'pending',
+      timestamp: null,
+      label: 'Simulated acceptance — Telegram not connected',
+    });
+    try {
+      localStorage.removeItem('tars_has_leave');
+      localStorage.removeItem('tars_leave_date');
+      localStorage.removeItem('tars_leave_type');
+      localStorage.removeItem('tars_leave_reason');
+      localStorage.removeItem('tars_sim_step');
+      localStorage.removeItem('tars_hod_approved');
+      localStorage.removeItem('tars_hod_approval_time');
+      localStorage.removeItem('tars_student_notified');
+      localStorage.removeItem('tars_simulated_cover_acceptance');
+      localStorage.removeItem('tars_incident_id');
+      localStorage.removeItem('tars_decision_id');
+    } catch {
+      // ignore
+    }
+    refreshTimetable();
+  };
+
+  const approveHod = async (decisionId?: number | string, note?: string) => {
+    let targetId = decisionId ? Number(decisionId) : (backendDecisionId || (typeof localStorage !== 'undefined' ? Number(localStorage.getItem('tars_decision_id')) : null));
+    if (!targetId) {
+      throw new Error('Cannot approve: No valid backend decision ID provided.');
+    }
+
+    if (backendStatus === 'connected' && backendMode === 'live') {
+      await loginForRole('hod');
+      const res = await api.approvals.approve(targetId);
+      if (res.success) {
+        setHodApprovedState(true);
+        setSimStepState(4);
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        setHodApprovalTime(time);
+        setStudentNotified(true);
+        try {
+          localStorage.setItem('tars_hod_approved', 'true');
+          localStorage.setItem('tars_sim_step', '4');
+          localStorage.setItem('tars_hod_approval_time', time);
+          localStorage.setItem('tars_student_notified', 'true');
+        } catch {
+          // ignore
+        }
+        await refreshTimetable();
+        return;
+      }
+      throw new Error(`Approval failed for decision ${targetId}`);
+    }
+
+    // Offline demo fallback only
+    setHodApprovedState(true);
+    setSimStepState(4);
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setHodApprovalTime(time);
+    setStudentNotified(true);
+    try {
+      localStorage.setItem('tars_hod_approved', 'true');
+      localStorage.setItem('tars_sim_step', '4');
+      localStorage.setItem('tars_hod_approval_time', time);
+      localStorage.setItem('tars_student_notified', 'true');
+      if (note) localStorage.setItem('tars_hod_note', note);
+    } catch {
+      // ignore
+    }
+    await refreshTimetable();
+  };
+
+  const rejectHod = async (decisionId?: number | string, note?: string) => {
+    let targetId = decisionId ? Number(decisionId) : (backendDecisionId || (typeof localStorage !== 'undefined' ? Number(localStorage.getItem('tars_decision_id')) : null));
+    if (!targetId) {
+      throw new Error('Cannot reject: No valid backend decision ID provided.');
+    }
+
+    if (backendStatus === 'connected' && backendMode === 'live') {
+      await loginForRole('hod');
+      const res = await api.approvals.reject(targetId);
+      if (res.success) {
+        setHasActiveLeaveState(false);
+        setHodApprovedState(false);
+        setBackendDecisionId(null);
+        setBackendIncidentId(null);
+        try {
+          localStorage.removeItem('tars_has_leave');
+          localStorage.removeItem('tars_hod_approved');
+          localStorage.removeItem('tars_decision_id');
+          localStorage.removeItem('tars_incident_id');
+        } catch {
+          // ignore
+        }
+        await refreshTimetable();
+        return;
+      }
+      throw new Error(`Rejection failed for decision ${targetId}`);
+    }
+
+    // Offline demo fallback only
+    setHasActiveLeaveState(false);
+    setHodApprovedState(false);
+    try {
+      localStorage.removeItem('tars_has_leave');
+      localStorage.setItem('tars_hod_approved', 'false');
+      localStorage.removeItem('tars_hod_approval_time');
+      if (note) localStorage.setItem('tars_hod_note', note);
+    } catch {
+      // ignore
+    }
+    await refreshTimetable();
+  };
+
+  const resetDemo = async (): Promise<boolean> => {
+    await loginForRole('hod');
+    const res = await api.admin.resetDemo();
+    if (res && (res.status === 'reset' || res.status === 'ok')) {
+      setHasActiveLeaveState(false);
+      setHodApprovedState(false);
+      setBackendDecisionId(null);
+      setBackendIncidentId(null);
+      setStudentNotified(false);
+      setSimulatedCoverState({
+        decisionId: null,
+        incidentId: null,
+        aiStatus: 'pending',
+        labStatus: 'pending',
+        timestamp: null,
+        label: 'Simulated acceptance — Telegram not connected',
+      });
+      try {
+        localStorage.removeItem('tars_has_leave');
+        localStorage.removeItem('tars_hod_approved');
+        localStorage.removeItem('tars_decision_id');
+        localStorage.removeItem('tars_incident_id');
+        localStorage.removeItem('tars_simulated_cover_acceptance');
+        localStorage.removeItem('tars_hod_approval_time');
+      } catch {
+        // ignore
+      }
+      await refreshTimetable();
+      return true;
+    }
+    throw new Error('Demo reset failed on backend');
+  };
 
   // Admin state
   const [incidentText, setIncidentText] = useState('Dr. Rao absent tomorrow (21 Nov) due to medical leave');
@@ -604,6 +1314,9 @@ export const TarsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         scheduleSlots,
         facultyStatuses,
         roomStatuses,
+        liveTimetable,
+        timetableStatus,
+        refreshTimetable,
         incidentText,
         setIncidentText,
         reasoningLogs,
@@ -613,6 +1326,40 @@ export const TarsProvider: React.FC<{ children: React.ReactNode }> = ({ children
         nudgeAllFaculty,
         facultyNudgeTriggered,
         kpiStats,
+        hasActiveLeave,
+        leaveDate,
+        leaveType,
+        leaveReason,
+        labCovered,
+        aiCovered,
+        hodApproved,
+        hodApprovalTime,
+        studentNotified,
+        simStep,
+        applyLeave,
+        cancelLeave,
+        setSimStep,
+        advanceSimulation,
+        resetSimulation,
+        approveHod,
+        rejectHod,
+        resetDemo,
+        activeFacultyId,
+        setActiveFacultyId,
+        simulatedCoverStatus: simulatedCoverState.aiStatus,
+        simulatedCoverDecisionId: simulatedCoverState.decisionId,
+        simulatedAiStatus: simulatedCoverState.aiStatus,
+        simulatedLabStatus: simulatedCoverState.labStatus,
+        acceptSubstituteCover,
+        declineSubstituteCover,
+        acceptAiCover,
+        declineAiCover,
+        acceptLabCover,
+        declineLabCover,
+        backendStatus,
+        backendMode,
+        backendIncidentId,
+        backendDecisionId,
       }}
     >
       {children}

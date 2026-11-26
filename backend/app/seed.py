@@ -16,16 +16,22 @@ ROOT = Path(__file__).resolve().parents[2]
 DB = ROOT / "backend" / "tars.db"
 SCHEMA = Path(__file__).with_name("schema.sql")
 DATA = Path(__file__).with_name("seed_data.json")
+DATASETS = {"bmsit": Path(__file__).with_name("seed_bmsit.json")}  # chosen with TARS_SEED
 MOCK = ROOT / "docs" / "mock"  # mock API responses for the frontend (backend never writes into frontend/)
 DAYS = ["MON", "TUE", "WED", "THU", "FRI"]
 
 
 def load_data(path: Path = None) -> dict:
-    return json.loads((path or DATA).read_text(encoding="utf-8"))
+    name = os.environ.get("TARS_SEED", "").strip().lower()
+    if path is None and name and name not in DATASETS:
+        raise ValueError(f"unknown TARS_SEED {name!r}; use one of {sorted(DATASETS)} or leave it empty")
+    return json.loads((path or DATASETS.get(name) or DATA).read_text(encoding="utf-8"))
 
 
 def build_timetable(data: dict) -> list[tuple]:
     """Greedy random placement with retries; guarantees no section/faculty/room clash."""
+    if "slots" in data:  # a fixed timetable; clashes are refused by the unique indexes
+        return [(s["day"], s["period"], s["section"], s["subject"], s["faculty"], s["room"]) for s in data["slots"]]
     seed = data.get("timetable_seed", 7)
     hours = {s["code"]: s["hours_per_week"] for s in data["subjects"]}
     labs = {s["code"] for s in data["subjects"] if s["is_lab"]}
@@ -69,6 +75,18 @@ def build_timetable(data: dict) -> list[tuple]:
     raise RuntimeError("could not build a clash-free timetable")
 
 
+def insert_nptel(con, data: dict) -> None:
+    for r in data.get("nptel", []):
+        rid = con.execute("INSERT INTO nptel_requests (faculty_id, title, item, sections, due_date, created_at) VALUES (?,?,?,?,?,?)",
+                          (r["faculty_id"], r["title"], r["item"], json.dumps(r["sections"]), r["due_date"],
+                           r["created_at"])).lastrowid
+        con.executemany("INSERT INTO nptel_submissions (request_id, user_id, student_name, usn, section, course_name, score, "
+                        "certificate_id, status, uploaded_at, flags) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        [(rid, s.get("user_id"), s["student_name"], s["usn"], s["section"], s.get("course_name", ""),
+                          s.get("score", 0), s.get("certificate_id", ""), s["status"], s.get("uploaded_at", ""),
+                          json.dumps(s.get("flags", []))) for s in r["submissions"]])
+
+
 def main():
     data = load_data()
     DB.unlink(missing_ok=True)
@@ -91,8 +109,14 @@ def main():
                     [(e["title"], e["org"], e["venue"], e["day"], e["start"], e["end"]) for e in data["events"]])
     cur.executemany("INSERT INTO slots (day,period,section,subject_code,faculty_id,room_id) VALUES (?,?,?,?,?,?)",
                     build_timetable(data))
+    insert_nptel(con, data)
     apply_demo_password(con, keep_if_unset=False)
     con.commit()
+    if "demo" not in data:  # the mock files and demo line are written for the default dataset
+        n = con.execute("SELECT COUNT(*) FROM slots").fetchone()[0]
+        print(f"OK  tars.db created with {n} slots, 0 clashes (enforced by unique indexes)")
+        con.close()
+        return
     export_mock(con, data)
 
     demo = data["demo"]
@@ -105,7 +129,7 @@ def main():
     con.close()
 
 
-RESET_TABLES = ("event_rsvps", "ack_requests", "nudges", "decisions", "incidents", "slots", "attendance", "events")
+RESET_TABLES = ("nptel_submissions", "nptel_requests", "applied_changes", "event_rsvps", "ack_requests", "nudges", "decisions", "incidents", "slots", "attendance", "events")
 
 
 def reset_demo(con, data: dict = None) -> int:
@@ -146,6 +170,7 @@ def reset_demo(con, data: dict = None) -> int:
                         [(e["title"], e["org"], e["venue"], e["day"], e["start"], e["end"]) for e in data["events"]])
         con.executemany("INSERT INTO slots (day,period,section,subject_code,faculty_id,room_id) VALUES (?,?,?,?,?,?)",
                         build_timetable(data))
+        insert_nptel(con, data)
         apply_demo_password(con, keep_if_unset=True)
     return con.execute("SELECT COUNT(*) FROM slots").fetchone()[0]
 
@@ -244,7 +269,7 @@ def export_mock(con, data: dict):
 if __name__ == "__main__":
     try:
         from dotenv import load_dotenv
-        load_dotenv(ROOT / ".env")   # only to read TARS_DEMO_PASSWORD; nothing is written back
+        load_dotenv(ROOT / ".env")   # TARS_DEMO_PASSWORD and TARS_SEED; nothing is written back
     except ImportError:
         pass
     main()

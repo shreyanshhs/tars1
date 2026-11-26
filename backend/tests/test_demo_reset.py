@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 import pytest
-from conftest import H, seed_name, slot_id
+from conftest import H, approve, seed_name, slot_id
 from fastapi.testclient import TestClient
 from test_agent import DEMO, FakeClient, demo_script
 from test_notify import CHAT, FakeTelegram, link_all
@@ -74,6 +74,7 @@ def test_reset_restores_everything_but_keeps_telegram_links(api, db, tg, demo_on
 
     # make a mess: demo incident (+ Telegram requests + timer), RSVP, snooze, rename
     did = api.post("/api/incidents", json=DEMO, headers=H("H01")).json()["decision_id"]
+    approve(api, did)
     assert tools.get_decision(did, con=db)["status"] == "pending_ack"
     assert n.scheduler.get_job(f"escalate-{did}") is not None
     old_rid = db.execute("SELECT id FROM ack_requests WHERE faculty_id = 'F08'").fetchone()[0]
@@ -89,7 +90,7 @@ def test_reset_restores_everything_but_keeps_telegram_links(api, db, tg, demo_on
     assert reset(api).json() == {"status": "reset", "slots": 72}
 
     assert tools.get_timetable(con=db) == fresh_slots           # same slots, same ids, all scheduled
-    for t in ("incidents", "decisions", "nudges", "event_rsvps", "ack_requests"):
+    for t in ("applied_changes", "incidents", "decisions", "nudges", "event_rsvps", "ack_requests"):
         assert count(db, t) == 0, t
     links = dict(db.execute("SELECT id, telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL").fetchall())
     assert links == {"F07": CHAT["F07"], "F08": CHAT["F08"], "H01": CHAT["H01"], "S001": "555"}
@@ -98,7 +99,8 @@ def test_reset_restores_everything_but_keeps_telegram_links(api, db, tg, demo_on
         == seed_name("F08")                                      # seeded names come back
     assert all(e["rsvp_count"] == 0 for e in api.get("/api/events", headers=H("S001")).json())
     assert api.get("/api/stats", headers=H("H01")).json() == {
-        "classes_lost": 0, "rescued": 0, "nudges_acted": 0, "avg_response_s": 0}
+        "classes_lost": 0, "rescued": 0, "pending_confirmation": 0, "cancelled": 0, "escalated": 0,
+        "closed_unresolved": 0, "nudges_acted": 0, "avg_response_s": 0}
     assert (env.stat().st_mtime if env.exists() else None) == env_mtime  # .env untouched
 
     msgs = [m for m in bus.recent if m["event"] == "demo_reset"]
@@ -119,6 +121,7 @@ def test_demo_works_again_after_reset(api, db, tg, demo_on):
         assert r.status_code == 202, run
         did = r.json()["decision_id"]
         assert did == 1                                           # ids restart: same demo every time
+        approve(api, did)
         assert tools.get_decision(did, con=db)["status"] == "pending_ack"
         ds = next(s for s in tools.get_timetable(section="CSE-A", day="MON", con=db) if s["period"] == 2)
         assert ds["id"] == slot_id(db, "CSE-A", "MON", 2) == 23 and ds["faculty_id"] == "F08"

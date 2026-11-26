@@ -13,11 +13,11 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
-from .db import DAYS, use_db
+from .db import DAYS, period_numbers, use_db
 
 EDITABLE = {"faculty_id", "room_id", "day", "period", "status"}
 STATUSES = {"scheduled", "replanned", "cancelled"}
-PERIODS = range(1, 7)
+PERIODS = range(1, 7)  # only when there is no database to ask
 CHECKS = (("section", "section"), ("faculty", "faculty_id"), ("room", "room_id"))
 
 
@@ -50,7 +50,7 @@ def load_slots(con: sqlite3.Connection) -> list[dict]:
 
 
 def validate_clash(changes: Iterable[dict], current_slots: Optional[list[dict]] = None,
-                   con: Optional[sqlite3.Connection] = None) -> ClashResult:
+                   con: Optional[sqlite3.Connection] = None, periods: Optional[Iterable[int]] = None) -> ClashResult:
     """Check the timetable that would result from applying `changes`.
 
     `current_slots` lets callers (and tests) pass the timetable directly; otherwise it is read
@@ -58,8 +58,10 @@ def validate_clash(changes: Iterable[dict], current_slots: Optional[list[dict]] 
     """
     if current_slots is None:
         with use_db(con) as c:
-            current_slots = load_slots(c)
+            return validate_clash(changes, load_slots(c), c, periods)
 
+    if periods is None:
+        periods = period_numbers(con) if con is not None else PERIODS
     state = {s["id"]: dict(s) for s in current_slots}
     errors: list[str] = []
     for ch in changes:
@@ -74,7 +76,7 @@ def validate_clash(changes: Iterable[dict], current_slots: Optional[list[dict]] 
         if "day" in ch and ch["day"] not in DAYS:
             errors.append(f"slot {sid}: invalid day {ch['day']!r}")
             continue
-        if "period" in ch and ch["period"] not in PERIODS:
+        if "period" in ch and ch["period"] not in periods:
             errors.append(f"slot {sid}: invalid period {ch['period']!r}")
             continue
         if "status" in ch and ch["status"] not in STATUSES:

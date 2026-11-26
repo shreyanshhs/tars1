@@ -7,12 +7,13 @@ import json
 import sqlite3
 from typing import Optional
 
-from .db import DAYS, fetch_slots, use_db
+from .db import DAYS, fetch_slots, period_numbers, use_db
 from .validator import ClashError, ClashResult, load_slots, validate_clash
 
 ATTENDANCE_THRESHOLD = 75.0
 TRIGGERS = {"absence", "room_unavailable", "manual", "event_clash"}
-DECISION_STATUSES = {"proposed", "committed", "pending_ack", "acknowledged", "escalated", "rejected"}
+DECISION_STATUSES = {"proposed", "committed", "pending_ack", "acknowledged", "escalated", "rejected",
+                     "closed_unresolved"}
 
 
 def get_timetable(section: Optional[str] = None, faculty_id: Optional[str] = None,
@@ -100,6 +101,7 @@ def propose_reschedule(slot_id: int, day: Optional[str] = None, period: Optional
     """
     with use_db(con) as c:
         current = load_slots(c)
+        all_periods = period_numbers(c)
         rooms = {r["id"]: r["kind"] for r in c.execute("SELECT id, kind FROM rooms")}
     slot = next((s for s in current if s["id"] == slot_id), None)
     if slot is None:
@@ -108,7 +110,7 @@ def propose_reschedule(slot_id: int, day: Optional[str] = None, period: Optional
     start = DAYS.index(slot["day"])
     day_order = [day] if day else DAYS[start:] + DAYS[:start]
     for d in day_order:
-        periods = [period] if period else range(1, 7)
+        periods = [period] if period else all_periods
         for p in periods:
             if (d, p) == (slot["day"], slot["period"]):
                 continue
@@ -124,7 +126,7 @@ def propose_reschedule(slot_id: int, day: Optional[str] = None, period: Optional
             change = {"slot_id": slot_id, "day": d, "period": p}
             if room != slot["room_id"]:
                 change["room_id"] = room
-            if validate_clash([change], current_slots=current).ok:
+            if validate_clash([change], current_slots=current, periods=all_periods).ok:
                 return {"slot_id": slot_id,
                         "from": {"day": slot["day"], "period": slot["period"], "room_id": slot["room_id"]},
                         "to": {"day": d, "period": p, "room_id": room},

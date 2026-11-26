@@ -28,7 +28,7 @@ def test_demo_phases_follow_the_ui_flow(api, db, monkeypatch):
     s = steps()
     assert all(x["phase"] in agent.PHASES for x in s)
     assert s[0]["step"] == "perceive" and s[0]["phase"] == "signal"
-    assert s[-1]["step"] == "done" and s[-1]["phase"] == "dispatch"
+    assert s[-1]["step"] == "done" and s[-1]["phase"] == "escalate"  # waits for HOD
 
     by_text = lambda prefix: next(x for x in s if x["text"].startswith(prefix))
     assert by_text("get_attendance(")["phase"] == "evaluate"
@@ -38,7 +38,8 @@ def test_demo_phases_follow_the_ui_flow(api, db, monkeypatch):
     assert "71% < 75%: cancel blocked" in cons["text"] and "F08 can teach DS" in cons["text"]
     res = by_text("validate_clash(")
     assert res["phase"] == "resolve" and res["step"] == "tool_call" and "OK" in res["text"]
-    assert by_text("Committed 2 change(s)")["phase"] == "dispatch"
+    assert by_text("Change(s) to slot(s)")["phase"] == "escalate"
+    assert not any("Committed" in x["text"] for x in s)  # nothing applied before approval
     assert by_text("commit_change(")["phase"] == "dispatch"
     # model commentary takes the current stage: early text = evaluate, closing text = dispatch (no jump back)
     assert by_text("DS is at 71%")["phase"] == "evaluate"
@@ -48,13 +49,13 @@ def test_demo_phases_follow_the_ui_flow(api, db, monkeypatch):
     first = {}
     for i, x in enumerate(s):
         first.setdefault(x["phase"], i)
-    flow = [p for p in agent.PHASES if p != "escalate"]
-    assert [p for p in sorted(first, key=first.get)] == flow
-    assert "escalate" not in first
+    assert sorted(first, key=first.get) == list(agent.PHASES)
 
 
-def test_error_run_is_escalate(api, monkeypatch):
+def test_error_run_is_escalate(api, db, monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setattr(agent.tools, "find_substitute", lambda *a, **k: None)  # fallback finds nothing either
+    monkeypatch.setattr(agent.tools, "propose_reschedule", lambda *a, **k: None)
     bus.recent.clear()
     api.post("/api/incidents", json=DEMO, headers=H("H01"))
     last = steps()[-1]

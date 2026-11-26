@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import httpx
 import pytest
 import uvicorn
-from conftest import H
+from conftest import H, approve
 from fastapi.testclient import TestClient
 from test_agent import DEMO, FakeClient, demo_script
 
@@ -31,7 +31,11 @@ def demo_messages(db, monkeypatch):
     monkeypatch.setattr(agent, "make_client", lambda: FakeClient(demo_script(db)))
     from app.main import app
     bus.recent.clear()
-    assert TestClient(app).post("/api/incidents", json=DEMO, headers=H("F01")).status_code == 202
+    c = TestClient(app)
+    r = c.post("/api/incidents", json=DEMO, headers=H("F01"))
+    assert r.status_code == 202
+    assert "timetable_updated" not in {m["event"] for m in bus.recent}  # nothing changes before HOD approval
+    approve(c, r.json()["decision_id"])
     return list(bus.recent)
 
 
@@ -128,6 +132,8 @@ def test_live_stream_end_to_end(server):
         wait_for(lambda: len(bus._listeners) == len(who))  # all subscribed before the incident
         r = httpx.post(f"{server}/incidents", json=DEMO, headers=H("H01"), timeout=10)
         assert r.status_code == 202
+        a = httpx.post(f"{server}/decisions/{r.json()['decision_id']}/approve", headers=H("H01"), timeout=10)
+        assert a.status_code == 200
         results = {u: f.result() for u, f in futures.items()}
 
     s001, headers = results["S001"]
@@ -143,10 +149,11 @@ def test_live_stream_end_to_end(server):
     hod = results["H01"][0]
     assert {e for e, _ in hod} == {"ping", "timetable_updated", "decision_updated", "agent_step"}
     steps = [d for e, d in hod if e == "agent_step"]
-    assert steps[0]["step"] == "perceive" and steps[-1]["step"] == "done"
+    assert steps[0]["step"] == "perceive" and steps[-1]["text"].startswith("HOD approved")
+    assert any(x["step"] == "done" for x in steps)
     assert set(steps[0]) == {"decision_id", "step", "phase", "text", "ts"} and steps[0]["phase"] == "signal"
     final = [d for e, d in hod if e == "decision_updated"][-1]
-    assert final["status"] == "pending_ack" and set(final) == {
+    assert final["status"] == "committed" and set(final) == {
         "id", "created_at", "trigger", "summary", "reasoning", "affected_slot_ids", "status", "calendar_link"}
 
     f08 = {e for e, _ in results["F08"][0]}

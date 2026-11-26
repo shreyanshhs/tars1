@@ -15,6 +15,7 @@ from app import auth, seed
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["TARS_DEMO_PASSWORD"] = ""
 os.environ["TARS_PASSWORDLESS_LOGIN"] = ""
+os.environ["TARS_SEED"] = ""                     # tests use the default dataset unless they choose another
 os.environ["TARS_SESSION_SECRET"] = "test-secret-" + "x" * 32
 os.environ["GOOGLE_CALENDAR_ID"] = ""            # tests never touch the real calendar
 os.environ["GOOGLE_SERVICE_ACCOUNT_FILE"] = ""
@@ -101,3 +102,10 @@ def seed_name(user_id):
 
 def H(user_id):
     return {"X-User-Id": user_id}
+
+
+def approve(api, decision_id, headers=None):
+    """HOD approves: the only thing that applies a proposal to the timetable."""
+    r = api.post(f"/api/decisions/{decision_id}/approve", headers=headers or H("H01"))
+    assert r.status_code == 200, r.text
+    return r.json()

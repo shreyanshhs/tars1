@@ -105,6 +105,37 @@ CREATE TABLE event_rsvps (
   PRIMARY KEY (event_id, user_id)
 );
 
+-- What the HOD's approval actually changed (history for the KPIs; never updated). Not a foreign key to slots:
+-- a timetable import replaces slots, the history stays.
+CREATE TABLE applied_changes (
+  decision_id INTEGER NOT NULL REFERENCES decisions(id),
+  slot_id INTEGER NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('substituted','moved','room_changed','cancelled')),
+  PRIMARY KEY (decision_id, slot_id)
+);
+
+-- NPTEL certificate collection (seeded rows are simulated; no certificate is checked by this backend)
+CREATE TABLE nptel_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  faculty_id TEXT NOT NULL REFERENCES faculty(id),
+  title TEXT NOT NULL, item TEXT NOT NULL,
+  sections TEXT NOT NULL,          -- JSON array
+  due_date TEXT NOT NULL,          -- YYYY-MM-DD
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE nptel_submissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  request_id INTEGER NOT NULL REFERENCES nptel_requests(id),
+  user_id TEXT REFERENCES users(id),   -- null = roster row without an account
+  student_name TEXT NOT NULL, usn TEXT NOT NULL, section TEXT NOT NULL,
+  course_name TEXT NOT NULL DEFAULT '', score INTEGER NOT NULL DEFAULT 0, certificate_id TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK (status IN ('pending','verified','flagged')),
+  uploaded_at TEXT NOT NULL DEFAULT '',
+  flags TEXT NOT NULL DEFAULT '[]',    -- JSON array
+  UNIQUE (request_id, usn)
+);
+
 -- Telegram Accept/Decline requests to substitutes (one per substitute per decision)
 -- Logged-out sessions (POST /auth/logout). Rows are pruned after the token's own expiry.
 -- Not cleared by the demo reset, so a logged-out token never comes back.

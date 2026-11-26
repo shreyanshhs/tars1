@@ -15,7 +15,10 @@ export type ViewTab =
   | 'classes'
   | 'attendance'
   | 'admin'
-  | 'nudges';
+  | 'nudges'
+  | 'help'
+  | 'settings'
+  | 'meet';
 
 export type NudgeCategory = 'DEADLINE' | 'ATTENDANCE' | 'PACING';
 

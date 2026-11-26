@@ -1,0 +1,3431 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TARS API",
+    "version": "0.6.0"
+  },
+  "paths": {
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "description": "Password login. Passwordless (no/empty password) only when TARS_PASSWORDLESS_LOGIN=1.",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout",
+        "description": "Revoke THIS token (other sessions of the same user stay valid). Its stream tickets stop working\nand its open /stream connections are closed.",
+        "operationId": "logout_api_auth_logout_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/auth/stream-ticket": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Stream Ticket",
+        "description": "Short-lived (60 s), single-use ticket for GET /stream?ticket=… (EventSource can't send headers).",
+        "operationId": "stream_ticket_api_auth_stream_ticket_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamTicket"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/auth/demo-users": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Demo Users",
+        "operationId": "demo_users_api_auth_demo_users_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/User"
+                  },
+                  "type": "array",
+                  "title": "Response Demo Users Api Auth Demo Users Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Me",
+        "operationId": "me_api_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/timetable": {
+      "get": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Timetable",
+        "operationId": "timetable_api_timetable_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "section",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Section"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Slot"
+                  },
+                  "title": "Response Timetable Api Timetable Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/timetable/faculty/{faculty_id}": {
+      "get": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Faculty Timetable",
+        "operationId": "faculty_timetable_api_timetable_faculty__faculty_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "faculty_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Faculty Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Slot"
+                  },
+                  "title": "Response Faculty Timetable Api Timetable Faculty  Faculty Id  Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms": {
+      "get": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Rooms",
+        "operationId": "rooms_api_rooms_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "day",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "MON",
+                "TUE",
+                "WED",
+                "THU",
+                "FRI"
+              ],
+              "type": "string",
+              "title": "Day"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Period"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Room"
+                  },
+                  "title": "Response Rooms Api Rooms Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/today": {
+      "get": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Today",
+        "operationId": "today_api_today_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Today"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/attendance": {
+      "get": {
+        "tags": [
+          "schedule"
+        ],
+        "summary": "Attendance",
+        "operationId": "attendance_api_attendance_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "section",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Section"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AttendanceItem"
+                  },
+                  "title": "Response Attendance Api Attendance Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decisions": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Decisions",
+        "operationId": "decisions_api_decisions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Decision"
+                  },
+                  "type": "array",
+                  "title": "Response Decisions Api Decisions Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Stats",
+        "operationId": "stats_api_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stats"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/nudges": {
+      "get": {
+        "tags": [
+          "nudges"
+        ],
+        "summary": "Nudges",
+        "operationId": "nudges_api_nudges_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Nudge"
+                  },
+                  "type": "array",
+                  "title": "Response Nudges Api Nudges Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/events": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Events",
+        "operationId": "events_api_events_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "section",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Section"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Event"
+                  },
+                  "title": "Response Events Api Events Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events/{event_id}/rsvp": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Rsvp Event",
+        "description": "Idempotent: RSVPing twice is fine.",
+        "operationId": "rsvp_event_api_events__event_id__rsvp_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Unrsvp Event",
+        "description": "Idempotent: removing a missing RSVP is fine.",
+        "operationId": "unrsvp_event_api_events__event_id__rsvp_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Create Incident",
+        "operationId": "create_incident_api_incidents_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentAccepted"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/decisions/{decision_id}/approve": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Approve Decision",
+        "description": "Decision with pending changes → apply them now (nothing was applied before) → committed, or pending_ack\nwhile Telegram asks the substitute (a PARTIAL one stays escalated). Approving never stands in for a\nsubstitute's answer: pending_ack is acknowledged here only if nobody is left to answer.",
+        "operationId": "approve_decision_api_decisions__decision_id__approve_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "decision_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Decision Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decision"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decisions/{decision_id}/reject": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Reject Decision",
+        "description": "Pending changes (proposed or PARTIAL escalated) → rejected. Nothing is applied.",
+        "operationId": "reject_decision_api_decisions__decision_id__reject_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "decision_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Decision Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decision"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decisions/{decision_id}/close": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Close Decision",
+        "description": "escalated → closed_unresolved, with a reason. Not an approval: no slot changes, never counts as rescued.",
+        "operationId": "close_decision_api_decisions__decision_id__close_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "decision_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Decision Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decision"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/api/nudges/{nudge_id}/read": {
+      "post": {
+        "tags": [
+          "nudges"
+        ],
+        "summary": "Read Nudge",
+        "operationId": "read_nudge_api_nudges__nudge_id__read_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "nudge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Nudge Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Nudge"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nudges/{nudge_id}/snooze": {
+      "post": {
+        "tags": [
+          "nudges"
+        ],
+        "summary": "Snooze Nudge",
+        "description": "Hide from GET /nudges for `minutes` (1..10080). Snoozing again replaces the previous time.",
+        "operationId": "snooze_nudge_api_nudges__nudge_id__snooze_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "nudge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Nudge Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnoozeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Nudge"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/api/nudges/{nudge_id}/block": {
+      "post": {
+        "tags": [
+          "nudges"
+        ],
+        "summary": "Block Nudge",
+        "description": "Hide permanently from GET /nudges (counts as acted on in /stats).",
+        "operationId": "block_nudge_api_nudges__nudge_id__block_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "nudge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Nudge Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Nudge"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/faculty": {
+      "get": {
+        "tags": [
+          "faculty"
+        ],
+        "summary": "List Faculty",
+        "operationId": "list_faculty_api_faculty_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Faculty"
+                  },
+                  "type": "array",
+                  "title": "Response List Faculty Api Faculty Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/faculty/{faculty_id}": {
+      "patch": {
+        "tags": [
+          "faculty"
+        ],
+        "summary": "Rename Faculty",
+        "description": "Rename a faculty member. Every Slot's faculty_name follows (it is joined live), so the\nsections they teach get timetable_updated to refetch.",
+        "operationId": "rename_faculty_api_faculty__faculty_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "faculty_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Faculty Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FacultyUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Faculty"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/api/admin/timetable-template": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Timetable Template",
+        "description": "Download a CSV template for importing college timetables.",
+        "operationId": "get_timetable_template_api_admin_timetable_template_get",
+        "responses": {
+          "200": {
+            "description": "CSV template",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/import-timetable": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Import Timetable",
+        "description": "Import and normalize a timetable from parsed CSV/Excel rows. HOD only.\n\nValidates section, day, period, subject, faculty, room against DB records,\nchecks that faculty are qualified to teach subjects, detects duplicate slots\nand clashes within the file and against non-replaced sections.\nIf dry_run=true: returns validation results and preview without saving.\nIf dry_run=false: atomically replaces slots for the replaced sections and emits SSE updates.",
+        "operationId": "import_timetable_api_admin_import_timetable_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Dry Run"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/api/nptel/requests": {
+      "get": {
+        "tags": [
+          "nptel"
+        ],
+        "summary": "Nptel Requests",
+        "operationId": "nptel_requests_api_nptel_requests_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NptelRequest"
+                  },
+                  "type": "array",
+                  "title": "Response Nptel Requests Api Nptel Requests Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/nptel/requests/{request_id}/submissions": {
+      "get": {
+        "tags": [
+          "nptel"
+        ],
+        "summary": "Nptel Submissions",
+        "description": "Staff: every row. Students: only their own.",
+        "operationId": "nptel_submissions_api_nptel_requests__request_id__submissions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "verified",
+                    "flagged"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NptelSubmission"
+                  },
+                  "title": "Response Nptel Submissions Api Nptel Requests  Request Id  Submissions Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nptel/requests/{request_id}/nudge": {
+      "post": {
+        "tags": [
+          "nptel"
+        ],
+        "summary": "Nptel Nudge",
+        "description": "In-app reminder to pending students who have an account. The requesting faculty or the HOD only.",
+        "operationId": "nptel_nudge_api_nptel_requests__request_id__nudge_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NptelNudgeResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/meta": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Meta",
+        "operationId": "meta_api_meta_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Meta"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/reset-demo": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Reset Demo",
+        "description": "Restore the seeded timetable; clear incidents/decisions/nudges/RSVPs; cancel escalation timers.\nTelegram links (users.telegram_chat_id) are kept. Only touches the database, never .env.",
+        "operationId": "reset_demo_api_admin_reset_demo_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/stream": {
+      "get": {
+        "tags": [
+          "stream"
+        ],
+        "summary": "Stream",
+        "description": "EventSource can't send headers: authenticate with a single-use ticket from POST /auth/stream-ticket.",
+        "operationId": "stream_api_stream_get",
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticket"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE: timetable_updated, decision_updated, nudge_created, agent_step, demo_reset, ping",
+            "content": {
+              "text/event-stream": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AttendanceItem": {
+        "properties": {
+          "subject_code": {
+            "type": "string",
+            "title": "Subject Code"
+          },
+          "percent": {
+            "type": "number",
+            "title": "Percent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject_code",
+          "percent"
+        ],
+        "title": "AttendanceItem"
+      },
+      "CloseRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "CloseRequest"
+      },
+      "Decision": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "absence",
+              "room_unavailable",
+              "manual",
+              "event_clash"
+            ],
+            "title": "Trigger"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "reasoning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning"
+          },
+          "affected_slot_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Affected Slot Ids"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "committed",
+              "pending_ack",
+              "acknowledged",
+              "escalated",
+              "rejected",
+              "closed_unresolved"
+            ],
+            "title": "Status"
+          },
+          "calendar_link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "trigger",
+          "summary",
+          "affected_slot_ids",
+          "status",
+          "calendar_link"
+        ],
+        "title": "Decision"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "detail"
+        ],
+        "title": "ErrorResponse"
+      },
+      "Event": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "org": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Org"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue"
+          },
+          "day": {
+            "type": "string",
+            "enum": [
+              "MON",
+              "TUE",
+              "WED",
+              "THU",
+              "FRI"
+            ],
+            "title": "Day"
+          },
+          "start": {
+            "type": "string",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "title": "End"
+          },
+          "clashes_with": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Clashes With"
+          },
+          "rsvp": {
+            "type": "boolean",
+            "title": "Rsvp"
+          },
+          "rsvp_count": {
+            "type": "integer",
+            "title": "Rsvp Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "day",
+          "start",
+          "end",
+          "clashes_with",
+          "rsvp",
+          "rsvp_count"
+        ],
+        "title": "Event"
+      },
+      "Faculty": {
+        "properties": {
+          "faculty_id": {
+            "type": "string",
+            "title": "Faculty Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "subjects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subjects"
+          },
+          "max_load": {
+            "type": "integer",
+            "title": "Max Load"
+          },
+          "load": {
+            "type": "integer",
+            "title": "Load"
+          }
+        },
+        "type": "object",
+        "required": [
+          "faculty_id",
+          "name",
+          "subjects",
+          "max_load",
+          "load"
+        ],
+        "title": "Faculty"
+      },
+      "FacultyUpdate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "FacultyUpdate"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ImportErrorResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ImportValidationError"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "detail"
+        ],
+        "title": "ImportErrorResponse",
+        "description": "422 from the import. errors/summary are set only when the rows themselves failed validation."
+      },
+      "ImportRequest": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRow"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Rows"
+          },
+          "replace_sections": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replace Sections"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rows"
+        ],
+        "title": "ImportRequest"
+      },
+      "ImportResult": {
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ImportValidationError"
+            },
+            "type": "array",
+            "title": "Errors",
+            "default": []
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ImportSummary"
+          },
+          "imported": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imported"
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Slot"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preview"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valid",
+          "summary"
+        ],
+        "title": "ImportResult"
+      },
+      "ImportRow": {
+        "properties": {
+          "section": {
+            "type": "string",
+            "title": "Section"
+          },
+          "day": {
+            "type": "string",
+            "title": "Day"
+          },
+          "period": {
+            "type": "integer",
+            "title": "Period"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          },
+          "subject_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Code"
+          },
+          "faculty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Faculty"
+          },
+          "faculty_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Faculty Id"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room"
+          },
+          "room_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "section",
+          "day",
+          "period"
+        ],
+        "title": "ImportRow"
+      },
+      "ImportSummary": {
+        "properties": {
+          "total_rows": {
+            "type": "integer",
+            "title": "Total Rows"
+          },
+          "sections": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sections"
+          },
+          "errors": {
+            "type": "integer",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_rows",
+          "sections",
+          "errors"
+        ],
+        "title": "ImportSummary"
+      },
+      "ImportValidationError": {
+        "properties": {
+          "row": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "message"
+        ],
+        "title": "ImportValidationError"
+      },
+      "IncidentAccepted": {
+        "properties": {
+          "incident_id": {
+            "type": "integer",
+            "title": "Incident Id"
+          },
+          "decision_id": {
+            "type": "integer",
+            "title": "Decision Id"
+          },
+          "status": {
+            "type": "string",
+            "const": "agent_running",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "incident_id",
+          "decision_id",
+          "status"
+        ],
+        "title": "IncidentAccepted"
+      },
+      "IncidentRequest": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "absence",
+              "room_unavailable"
+            ],
+            "title": "Type"
+          },
+          "faculty_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Faculty Id"
+          },
+          "room_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Id"
+          },
+          "day": {
+            "type": "string",
+            "enum": [
+              "MON",
+              "TUE",
+              "WED",
+              "THU",
+              "FRI"
+            ],
+            "title": "Day"
+          },
+          "periods": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Periods"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "day",
+          "periods"
+        ],
+        "title": "IncidentRequest"
+      },
+      "LoginRequest": {
+        "properties": {
+          "login_id": {
+            "type": "string",
+            "title": "Login Id"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "login_id"
+        ],
+        "title": "LoginRequest"
+      },
+      "LoginResponse": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "token_type": {
+            "type": "string",
+            "const": "bearer",
+            "title": "Token Type"
+          },
+          "expires_at": {
+            "type": "string",
+            "title": "Expires At"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "token_type",
+          "expires_at",
+          "user"
+        ],
+        "title": "LoginResponse",
+        "description": "v0.5: send `Authorization: Bearer <token>` on every request."
+      },
+      "LogoutResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "LogoutResponse"
+      },
+      "Meta": {
+        "properties": {
+          "demo_mode": {
+            "type": "boolean",
+            "title": "Demo Mode"
+          },
+          "days": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "MON",
+                "TUE",
+                "WED",
+                "THU",
+                "FRI"
+              ]
+            },
+            "type": "array",
+            "title": "Days"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/Period"
+            },
+            "type": "array",
+            "title": "Periods"
+          },
+          "incident_types": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "absence",
+                "room_unavailable"
+              ]
+            },
+            "type": "array",
+            "title": "Incident Types"
+          }
+        },
+        "type": "object",
+        "required": [
+          "demo_mode",
+          "days",
+          "periods",
+          "incident_types"
+        ],
+        "title": "Meta",
+        "description": "v0.4: static options for forms + whether the demo reset button should show."
+      },
+      "NptelNudgeResult": {
+        "properties": {
+          "nudged_count": {
+            "type": "integer",
+            "title": "Nudged Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nudged_count"
+        ],
+        "title": "NptelNudgeResult"
+      },
+      "NptelRequest": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "faculty_id": {
+            "type": "string",
+            "title": "Faculty Id"
+          },
+          "faculty_name": {
+            "type": "string",
+            "title": "Faculty Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "item": {
+            "type": "string",
+            "title": "Item"
+          },
+          "sections": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sections"
+          },
+          "due_date": {
+            "type": "string",
+            "title": "Due Date"
+          },
+          "total_students": {
+            "type": "integer",
+            "title": "Total Students"
+          },
+          "submitted_count": {
+            "type": "integer",
+            "title": "Submitted Count"
+          },
+          "verified_count": {
+            "type": "integer",
+            "title": "Verified Count"
+          },
+          "flagged_count": {
+            "type": "integer",
+            "title": "Flagged Count"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "faculty_id",
+          "faculty_name",
+          "title",
+          "item",
+          "sections",
+          "due_date",
+          "total_students",
+          "submitted_count",
+          "verified_count",
+          "flagged_count",
+          "created_at"
+        ],
+        "title": "NptelRequest",
+        "description": "Seeded requests are simulated (the title says so)."
+      },
+      "NptelSubmission": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "request_id": {
+            "type": "integer",
+            "title": "Request Id"
+          },
+          "student_name": {
+            "type": "string",
+            "title": "Student Name"
+          },
+          "usn": {
+            "type": "string",
+            "title": "Usn"
+          },
+          "section": {
+            "type": "string",
+            "title": "Section"
+          },
+          "course_name": {
+            "type": "string",
+            "title": "Course Name"
+          },
+          "score": {
+            "type": "integer",
+            "title": "Score"
+          },
+          "certificate_id": {
+            "type": "string",
+            "title": "Certificate Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "verified",
+              "flagged"
+            ],
+            "title": "Status"
+          },
+          "uploaded_at": {
+            "type": "string",
+            "title": "Uploaded At"
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Flags",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "request_id",
+          "student_name",
+          "usn",
+          "section",
+          "course_name",
+          "score",
+          "certificate_id",
+          "status",
+          "uploaded_at"
+        ],
+        "title": "NptelSubmission"
+      },
+      "Nudge": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "replan",
+              "deadline",
+              "free_slot",
+              "event"
+            ],
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "read": {
+            "type": "boolean",
+            "title": "Read"
+          },
+          "snoozed_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snoozed Until"
+          },
+          "blocked": {
+            "type": "boolean",
+            "title": "Blocked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "kind",
+          "title",
+          "created_at",
+          "read",
+          "snoozed_until",
+          "blocked"
+        ],
+        "title": "Nudge"
+      },
+      "Period": {
+        "properties": {
+          "period": {
+            "type": "integer",
+            "title": "Period"
+          },
+          "start": {
+            "type": "string",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "title": "End"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "start",
+          "end"
+        ],
+        "title": "Period"
+      },
+      "ResetResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "reset",
+            "title": "Status"
+          },
+          "slots": {
+            "type": "integer",
+            "title": "Slots"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "slots"
+        ],
+        "title": "ResetResult"
+      },
+      "Room": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "classroom",
+              "lab",
+              "hall"
+            ],
+            "title": "Kind"
+          },
+          "capacity": {
+            "type": "integer",
+            "title": "Capacity"
+          },
+          "free": {
+            "type": "boolean",
+            "title": "Free"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "capacity",
+          "free"
+        ],
+        "title": "Room"
+      },
+      "Slot": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "day": {
+            "type": "string",
+            "enum": [
+              "MON",
+              "TUE",
+              "WED",
+              "THU",
+              "FRI"
+            ],
+            "title": "Day"
+          },
+          "period": {
+            "type": "integer",
+            "title": "Period"
+          },
+          "start": {
+            "type": "string",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "title": "End"
+          },
+          "section": {
+            "type": "string",
+            "title": "Section"
+          },
+          "subject_code": {
+            "type": "string",
+            "title": "Subject Code"
+          },
+          "subject_name": {
+            "type": "string",
+            "title": "Subject Name"
+          },
+          "faculty_id": {
+            "type": "string",
+            "title": "Faculty Id"
+          },
+          "faculty_name": {
+            "type": "string",
+            "title": "Faculty Name"
+          },
+          "room_id": {
+            "type": "string",
+            "title": "Room Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "scheduled",
+              "replanned",
+              "cancelled"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "day",
+          "period",
+          "start",
+          "end",
+          "section",
+          "subject_code",
+          "subject_name",
+          "faculty_id",
+          "faculty_name",
+          "room_id",
+          "status"
+        ],
+        "title": "Slot"
+      },
+      "SnoozeRequest": {
+        "properties": {
+          "minutes": {
+            "type": "integer",
+            "maximum": 10080.0,
+            "minimum": 1.0,
+            "title": "Minutes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "minutes"
+        ],
+        "title": "SnoozeRequest"
+      },
+      "Stats": {
+        "properties": {
+          "classes_lost": {
+            "type": "integer",
+            "title": "Classes Lost"
+          },
+          "rescued": {
+            "type": "integer",
+            "title": "Rescued"
+          },
+          "pending_confirmation": {
+            "type": "integer",
+            "title": "Pending Confirmation"
+          },
+          "cancelled": {
+            "type": "integer",
+            "title": "Cancelled"
+          },
+          "escalated": {
+            "type": "integer",
+            "title": "Escalated"
+          },
+          "closed_unresolved": {
+            "type": "integer",
+            "title": "Closed Unresolved"
+          },
+          "nudges_acted": {
+            "type": "integer",
+            "title": "Nudges Acted"
+          },
+          "avg_response_s": {
+            "type": "number",
+            "title": "Avg Response S"
+          }
+        },
+        "type": "object",
+        "required": [
+          "classes_lost",
+          "rescued",
+          "pending_confirmation",
+          "cancelled",
+          "escalated",
+          "closed_unresolved",
+          "nudges_acted",
+          "avg_response_s"
+        ],
+        "title": "Stats",
+        "description": "Decision counts; see docs/API_CONTRACT.md for the definitions."
+      },
+      "StreamTicket": {
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "title": "Ticket"
+          },
+          "expires_at": {
+            "type": "string",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket",
+          "expires_at"
+        ],
+        "title": "StreamTicket",
+        "description": "v0.5: single-use, 60 s. Open EventSource(`/api/stream?ticket=${ticket}`) right away."
+      },
+      "Today": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "enum": [
+              "MON",
+              "TUE",
+              "WED",
+              "THU",
+              "FRI"
+            ],
+            "title": "Day"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/Slot"
+            },
+            "type": "array",
+            "title": "Slots"
+          },
+          "nudges": {
+            "items": {
+              "$ref": "#/components/schemas/Nudge"
+            },
+            "type": "array",
+            "title": "Nudges"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "slots",
+          "nudges"
+        ],
+        "title": "Today"
+      },
+      "User": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "usn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usn"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "student",
+              "faculty",
+              "hod"
+            ],
+            "title": "Role"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "name",
+          "role"
+        ],
+        "title": "User"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "description": "Session token from POST /api/auth/login",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

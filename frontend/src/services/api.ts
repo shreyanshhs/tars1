@@ -1,4 +1,5 @@
 import type {
+  Role,
   User,
   AuthResponse,
   StreamTicket,
@@ -25,6 +26,59 @@ import demoUsers from '../mock/demo_users.json';
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false';
+
+// Backend connectivity check
+export async function checkBackendHealth(): Promise<{ online: boolean; mode: 'live' | 'offline_demo' }> {
+  try {
+    const healthUrl = BASE_URL.replace(/\/api\/?$/, '') + '/health';
+    const res = await fetch(healthUrl, { method: 'GET', signal: AbortSignal.timeout(1200) });
+    if (res.ok) {
+      return { online: true, mode: 'live' };
+    }
+    return { online: false, mode: 'offline_demo' };
+  } catch {
+    return { online: false, mode: 'offline_demo' };
+  }
+}
+
+/**
+ * BMSIT Identity Adapter
+ * Verified against backend seed records (`backend/app/seed_bmsit.json`):
+ * - F_CDB (Prof. Chaitra D B): Teaches 1BAI103 & PLC LAB, Thursday P4 & P6-P7
+ * - F_SMP (Mr. Syed Matheen Pasha): Qualified for 1BAI103, free on Thursday P4
+ * - F_GPL (Mrs. Geetha P L): Co-faculty for PLC LAB, free on Thursday P6-P7
+ * - H_SKB (Dr. Surekha K B): HOD (CSE), administrator for approvals
+ * - S0000 (Demo student): Student in Section CSE-10 (USN: 26UG1BYCS0000-T)
+ */
+export const IDENTITY_ADAPTER = {
+  faculty: {
+    F_CDB: 'F_CDB',
+    F_SMP: 'F_SMP',
+    F_GPL: 'F_GPL',
+  } as Record<string, string>,
+  facultyReverse: {
+    F_CDB: { id: 'F_CDB', name: 'Prof. Chaitra D B', code: 'CDB' },
+    F_SMP: { id: 'F_SMP', name: 'Mr. Syed Matheen Pasha', code: 'SMP' },
+    F_GPL: { id: 'F_GPL', name: 'Mrs. Geetha P L', code: 'GPL' },
+  } as Record<string, { id: string; name: string; code: string }>,
+  hod: {
+    H_SKB: 'H_SKB',
+  } as Record<string, string>,
+  hodReverse: {
+    H_SKB: { id: 'H_SKB', name: 'Dr. Surekha K B', code: 'SKB' },
+  } as Record<string, { id: string; name: string; code: string }>,
+  student: {
+    S0000: 'S0000',
+  } as Record<string, string>,
+  studentReverse: {
+    S0000: { id: 'S0000', name: 'Demo student', section: 'CSE-10', usn: '26UG1BYCS0000-T' },
+  } as Record<string, { id: string; name: string; section: string; usn?: string }>,
+  roleLoginId: {
+    faculty: 'F_CDB',
+    hod: 'H_SKB',
+    student: 'S0000',
+  } as Record<'faculty' | 'hod' | 'student', string>,
+};
 
 // Token storage helpers
 export function getToken(): string | null {
@@ -221,14 +275,15 @@ export const api = {
       return request<User[]>('/auth/demo-users');
     },
 
-    async login(login_id: string, _password?: string): Promise<AuthResponse> {
+    async login(login_id: string, password?: string): Promise<AuthResponse> {
       if (USE_MOCK) {
-        const user = (demoUsers as User[]).find((u) => u.login_id === login_id) || {
-          id: 'S0274',
-          login_id: 'shreyansh',
-          name: 'Shreyansh',
-          role: 'student' as const,
+        const user = (demoUsers as User[]).find((u) => u.login_id === login_id || u.user_id === login_id) || {
+          id: login_id === 'H_SKB' ? 'H_SKB' : login_id === 'F_CDB' ? 'F_CDB' : 'S0000',
+          login_id: login_id,
+          name: login_id === 'H_SKB' ? 'Dr. Surekha K B' : login_id === 'F_CDB' ? 'Prof. Chaitra D B' : 'Demo student',
+          role: (login_id === 'H_SKB' ? 'hod' : login_id === 'F_CDB' ? 'faculty' : 'student') as Role,
           section: 'CSE-10',
+          usn: login_id === 'S0000' ? '26UG1BYCS0000-T' : null,
         };
         const mockResponse: AuthResponse = {
           token: `mock_token_${user.id}_${Date.now()}`,
@@ -240,9 +295,13 @@ export const api = {
         setCurrentUser(user);
         return mockResponse;
       }
+      const body: Record<string, string> = { login_id };
+      if (password !== undefined && password !== null && password !== '') {
+        body.password = password;
+      }
       const res = await request<AuthResponse>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ login_id, password: _password || 'demo' }),
+        body: JSON.stringify(body),
       });
       setToken(res.token);
       setCurrentUser(res.user);
@@ -273,66 +332,95 @@ export const api = {
 
   // Leave Flow
   leave: {
-    async applyLeave(payload: CreateLeavePayload): Promise<Leave> {
-      if (USE_MOCK) {
-        const user = getCurrentUser();
-        const newLeave: Leave = {
-          id: `leave_${Date.now()}`,
-          faculty_id: user?.id || 'F_CDB',
-          faculty_name: user?.name || 'Prof. Chaitra D B',
-          date: payload.date,
-          type: payload.type,
-          reason: payload.reason,
-          status: 'finding_substitutes',
-          classes: [
-            {
-              slot_id: 104,
-              subject_code: '1BAI103',
-              subject_name: 'Introduction to AI and Applications',
-              section: 'CSE-10',
-              room: 'SJB-104',
-              period: 4,
-              time: '11:35 - 12:30',
-              outcome: 'pending',
-              substitute_id: 'F_SMP',
-              substitute_name: 'Mr. Syed Matheen Pasha',
-            },
-            {
-              slot_id: 106,
-              subject_code: '1BPLC105B',
-              subject_name: 'Python Programming (Lab)',
-              section: 'CSE-10',
-              room: '511C',
-              period: '6-7',
-              time: '14:20 - 16:10',
-              outcome: 'covered',
-              substitute_id: 'F_GPL',
-              substitute_name: 'Mrs. Geetha P L',
-            },
-          ],
-          steps: [
-            {
-              title: 'Leave request registered',
-              detail: `Leave on ${payload.date} logged. TARS identified 2 classes requiring cover.`,
-              status: 'done',
-              at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            },
-            {
-              title: 'Co-faculty priority lookup',
-              detail: 'Checking Mrs. Geetha P L for CSE-10 Python Lab. Zero timetable clash found.',
-              status: 'in_progress',
-              at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            },
-          ],
-          created_at: new Date().toISOString(),
+    async applyLeave(payload: CreateLeavePayload): Promise<Leave & { isLiveBackend?: boolean; incident_id?: number; decision_id?: number }> {
+      // 1. Live backend call when not in mock mode: POST /api/incidents
+      if (!USE_MOCK) {
+        const backendFacultyId = IDENTITY_ADAPTER.roleLoginId.faculty || 'F_CDB';
+        const incidentBody = {
+          type: 'absence',
+          faculty_id: backendFacultyId,
+          day: 'THU',
+          periods: [4, 6, 7],
+          note: payload.reason || 'Leave requested via TARS',
         };
-        mockLeaves.unshift(newLeave);
-        return newLeave;
+        const res = await request<{ incident_id: number; decision_id: number; status: string }>('/incidents', {
+          method: 'POST',
+          body: JSON.stringify(incidentBody),
+        });
+        if (res && res.incident_id) {
+          const user = getCurrentUser();
+          const liveLeave: Leave = {
+            id: `incident_${res.incident_id}`,
+            faculty_id: user?.id || 'F_CDB',
+            faculty_name: user?.name || 'Prof. Chaitra D B',
+            date: payload.date,
+            type: payload.type,
+            reason: payload.reason,
+            status: 'finding_substitutes',
+            classes: [...(mockLeaves[0]?.classes || [])],
+            steps: [...(mockLeaves[0]?.steps || [])],
+            created_at: new Date().toISOString(),
+          };
+          mockLeaves.unshift(liveLeave);
+          return { ...liveLeave, isLiveBackend: true, incident_id: res.incident_id, decision_id: res.decision_id };
+        }
+        throw new Error('Failed to create leave incident on backend');
       }
-      return request<Leave>('/leave', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+
+      // 2. Local interactive demo state (USE_MOCK === true)
+      const user = getCurrentUser();
+      const newLeave: Leave = {
+        id: `leave_${Date.now()}`,
+        faculty_id: user?.id || 'F_CDB',
+        faculty_name: user?.name || 'Prof. Chaitra D B',
+        date: payload.date,
+        type: payload.type,
+        reason: payload.reason,
+        status: 'finding_substitutes',
+        classes: [
+          {
+            slot_id: 104,
+            subject_code: '1BAI103',
+            subject_name: 'Introduction to AI and Applications',
+            section: 'CSE-10',
+            room: 'SJB-104',
+            period: 4,
+            time: '11:35 - 12:30',
+            outcome: 'pending',
+            substitute_id: 'F_SMP',
+            substitute_name: 'Mr. Syed Matheen Pasha',
+          },
+          {
+            slot_id: 106,
+            subject_code: '1BPLC105B',
+            subject_name: 'Python Programming (Lab)',
+            section: 'CSE-10',
+            room: '511C',
+            period: '6-7',
+            time: '14:20 - 16:10',
+            outcome: 'covered',
+            substitute_id: 'F_GPL',
+            substitute_name: 'Mrs. Geetha P L',
+          },
+        ],
+        steps: [
+          {
+            title: 'Leave request registered [Local Demo]',
+            detail: `Leave on ${payload.date} logged locally (Demo mode). 3 periods identified.`,
+            status: 'done',
+            at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+          {
+            title: 'Co-faculty priority lookup [Local Demo]',
+            detail: 'Checking Mrs. Geetha P L for CSE-10 Python Lab.',
+            status: 'in_progress',
+            at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        ],
+        created_at: new Date().toISOString(),
+      };
+      mockLeaves.unshift(newLeave);
+      return { ...newLeave, isLiveBackend: false };
     },
 
     async getMyLeaves(): Promise<Leave[]> {
@@ -387,76 +475,110 @@ export const api = {
       return request<Approval[]>('/approvals');
     },
 
-    async approve(id: string | number, note?: string): Promise<{ success: boolean }> {
+    async approve(id: string | number): Promise<{ success: boolean; isLiveBackend?: boolean }> {
       if (USE_MOCK) {
         const item = mockApprovals.find((a) => a.id.toString() === id.toString());
         if (item) item.status = 'approved';
-        return { success: true };
+        return { success: true, isLiveBackend: false };
       }
-      return request<{ success: boolean }>(`/approvals/${id}/approve`, {
+      const res = await request<unknown>(`/decisions/${id}/approve`, {
         method: 'POST',
-        body: JSON.stringify({ note }),
       });
+      return { success: !!res, isLiveBackend: true };
     },
 
-    async reject(id: string | number, note?: string): Promise<{ success: boolean }> {
+    async reject(id: string | number): Promise<{ success: boolean; isLiveBackend?: boolean }> {
       if (USE_MOCK) {
         const item = mockApprovals.find((a) => a.id.toString() === id.toString());
         if (item) item.status = 'rejected';
-        return { success: true };
+        return { success: true, isLiveBackend: false };
       }
-      return request<{ success: boolean }>(`/approvals/${id}/reject`, {
+      const res = await request<unknown>(`/decisions/${id}/reject`, {
         method: 'POST',
-        body: JSON.stringify({ note }),
+      });
+      return { success: !!res, isLiveBackend: true };
+    },
+  },
+
+  // Admin & Demo Reset
+  admin: {
+    async resetDemo(): Promise<{ status: string; slots?: number }> {
+      return request<{ status: string; slots?: number }>('/admin/reset-demo', {
+        method: 'POST',
       });
     },
   },
 
   // Decisions & XAI
   decisions: {
-    async getDecisions(range: 'today' | '7d' | 'semester' = 'today'): Promise<Decision[]> {
-      if (USE_MOCK) {
-        return [
-          {
-            id: 'dec_001',
-            created_at: '2026-11-25T10:44:00Z',
-            summary: 'Prof. Chaitra D B leave: CSE-10 AI (Thu P4) assigned to Mr. Syed Matheen Pasha; Python Lab (Thu P6-P7) assigned to Mrs. Geetha P L',
-            status: 'committed',
-            outcomes: [
-              'Intro to AI assigned to Mr. Syed Matheen Pasha (free, qualified)',
-              'Python Programming Lab assigned to Mrs. Geetha P L (co-faculty, free)',
-              'Zero room or timetable clashes created',
-            ],
-            why: [
-              'Mrs. Geetha co-teaches the Python lab every Thursday, minimizing instructional disruption.',
-              'Mrs. Shabeena Lylath was considered first for Intro to AI but declined due to an existing Web Lab slot.',
-              'Mr. Syed Matheen Pasha has lowest current teaching load (11/18 units) and verified subject proficiency.',
-            ],
-            options: [
-              { teacher_id: 'F_GPL', teacher_name: 'Mrs. Geetha P L', free: true, can_teach: true, load: 13, result: 'accepted' },
-              { teacher_id: 'F_SDB', teacher_name: 'Mrs. Shabeena Lylath', free: false, can_teach: true, load: 14, result: 'declined', rejection_reason: 'Timetable clash with BCSL504 Lab' },
-              { teacher_id: 'F_SMP', teacher_name: 'Mr. Syed Matheen Pasha', free: true, can_teach: true, load: 11, result: 'accepted' },
-            ],
-            rules: [
-              { name: 'No double-booking for sections or faculty', ok: true, detail: 'Checked across all 5 sections' },
-              { name: 'Respect 1st-year lunch period (1:25 PM - 2:20 PM)', ok: true, detail: 'P5 preserved as class slot' },
-              { name: 'Preserve lab 2-hour consecutive block integrity', ok: true, detail: 'P6-P7 kept paired' },
-              { name: 'Teacher on leave never assigned on leave day', ok: true, detail: 'Prof. Chaitra free all day' },
-            ],
-            steps: [
-              { at: '10:41:02', text: 'Perceived leave request: Prof. Chaitra D B on Thu 3 Dec.' },
-              { at: '10:41:05', text: 'Queried BMSIT timetable database: 2 affected slots identified.' },
-              { at: '10:41:10', text: 'Checked lab co-faculty roster: Mrs. Geetha P L identified for P6-P7.' },
-              { at: '10:42:15', text: 'Mrs. Geetha accepted cover for Python Lab.' },
-              { at: '10:42:30', text: 'Substituted candidate evaluation for Intro to AI: Mrs. Shabeena declined.' },
-              { at: '10:43:00', text: 'Fallback candidate Mr. Syed Matheen Pasha notified; accepted.' },
-              { at: '10:44:00', text: 'Validated complete resolution against conflict validator: 0 errors.' },
-              { at: '10:45:00', text: 'Sent consolidated approval card to HOD Dr. Surekha K B.' },
-            ],
-          },
-        ];
+    async getDecisions(): Promise<Decision[]> {
+      try {
+        const res = await request<Array<{
+          id: number;
+          created_at: string;
+          trigger: string;
+          summary: string;
+          reasoning?: string;
+          affected_slot_ids: number[];
+          status: string;
+          calendar_link?: string | null;
+        }>>('/decisions');
+        if (Array.isArray(res) && res.length > 0) {
+          return res.map((d) => ({
+            id: d.id,
+            created_at: d.created_at,
+            summary: d.summary,
+            status: d.status as Decision['status'],
+            reasoning: d.reasoning,
+            affected_slot_ids: d.affected_slot_ids,
+            calendar_link: d.calendar_link,
+            outcomes: [d.summary],
+            why: d.reasoning ? [d.reasoning] : [],
+          }));
+        }
+      } catch (err) {
+        console.warn('Backend /api/decisions unavailable; using local demo decision:', err);
       }
-      return request<Decision[]>(`/decisions?range=${range}`);
+
+      return [
+        {
+          id: 'dec_001',
+          created_at: '2026-11-25T10:44:00Z',
+          summary: 'Prof. Chaitra D B leave: CSE-10 AI (Thu P4) assigned to Mr. Syed Matheen Pasha; Python Lab (Thu P6-P7) assigned to Mrs. Geetha P L',
+          status: 'committed',
+          outcomes: [
+            'Intro to AI assigned to Mr. Syed Matheen Pasha (free, qualified)',
+            'Python Programming Lab assigned to Mrs. Geetha P L (co-faculty, free)',
+            'Zero room or timetable clashes created',
+          ],
+          why: [
+            'Mrs. Geetha co-teaches the Python lab every Thursday, minimizing instructional disruption.',
+            'Mrs. Shabeena Lylath was considered first for Intro to AI but declined due to an existing Web Lab slot.',
+            'Mr. Syed Matheen Pasha has lowest current teaching load (11/18 units) and verified subject proficiency.',
+          ],
+          options: [
+            { teacher_id: 'F_GPL', teacher_name: 'Mrs. Geetha P L', free: true, can_teach: true, load: 13, result: 'accepted' },
+            { teacher_id: 'F_SDB', teacher_name: 'Mrs. Shabeena Lylath', free: false, can_teach: true, load: 14, result: 'declined', rejection_reason: 'Timetable clash with BCSL504 Lab' },
+            { teacher_id: 'F_SMP', teacher_name: 'Mr. Syed Matheen Pasha', free: true, can_teach: true, load: 11, result: 'accepted' },
+          ],
+          rules: [
+            { name: 'No double-booking for sections or faculty', ok: true, detail: 'Checked across all 5 sections' },
+            { name: 'Respect 1st-year lunch period (1:25 PM - 2:20 PM)', ok: true, detail: 'P5 preserved as class slot' },
+            { name: 'Preserve lab 2-hour consecutive block integrity', ok: true, detail: 'P6-P7 kept paired' },
+            { name: 'Teacher on leave never assigned on leave day', ok: true, detail: 'Prof. Chaitra free all day' },
+          ],
+          steps: [
+            { at: '10:41:02', text: 'Perceived leave request: Prof. Chaitra D B on Thu 3 Dec.' },
+            { at: '10:41:05', text: 'Queried BMSIT timetable database: 2 affected slots identified.' },
+            { at: '10:41:10', text: 'Checked lab co-faculty roster: Mrs. Geetha P L identified for P6-P7.' },
+            { at: '10:42:15', text: 'Mrs. Geetha accepted cover for Python Lab.' },
+            { at: '10:42:30', text: 'Substituted candidate evaluation for Intro to AI: Mrs. Shabeena declined.' },
+            { at: '10:43:00', text: 'Fallback candidate Mr. Syed Matheen Pasha notified; accepted.' },
+            { at: '10:44:00', text: 'Validated complete resolution against conflict validator: 0 errors.' },
+            { at: '10:45:00', text: 'Sent consolidated approval card to HOD Dr. Surekha K B.' },
+          ],
+        },
+      ];
     },
 
     async getStats(): Promise<DecisionStats> {
@@ -472,6 +594,57 @@ export const api = {
     },
   },
 
+  // Stream (SSE)
+  stream: {
+    connect(
+      ticket: string,
+      callbacks: {
+        onAgentStep?: (step: { step: string; text: string; phase: string }) => void;
+        onDecisionUpdated?: (decision: unknown) => void;
+        onTimetableUpdated?: (data: unknown) => void;
+        onError?: (err: unknown) => void;
+      }
+    ): () => void {
+      const url = `${BASE_URL}/stream?ticket=${encodeURIComponent(ticket)}`;
+      const es = new EventSource(url);
+
+      es.addEventListener('agent_step', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          callbacks.onAgentStep?.(data);
+        } catch (err) {
+          console.warn('[SSE] Failed to parse agent_step:', err);
+        }
+      });
+
+      es.addEventListener('decision_updated', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          callbacks.onDecisionUpdated?.(data);
+        } catch (err) {
+          console.warn('[SSE] Failed to parse decision_updated:', err);
+        }
+      });
+
+      es.addEventListener('timetable_updated', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          callbacks.onTimetableUpdated?.(data);
+        } catch (err) {
+          console.warn('[SSE] Failed to parse timetable_updated:', err);
+        }
+      });
+
+      es.onerror = (err) => {
+        callbacks.onError?.(err);
+      };
+
+      return () => {
+        es.close();
+      };
+    },
+  },
+
   // Schedule & Timetable
   schedule: {
     async getTimetable(section = 'CSE-10', week?: string): Promise<TimetableSlot[]> {
@@ -480,9 +653,9 @@ export const api = {
           { id: 1, day: 'THU', period: 1, start: '08:30', end: '09:25', section, subject_code: '1BCHECS102', subject_name: 'Chemistry', faculty_id: 'F_UB', faculty_name: 'Dr. Udayabhanu', room_id: 'SJB-104', status: 'scheduled' },
           { id: 2, day: 'THU', period: 2, start: '09:25', end: '10:20', section, subject_code: '1BIC107', subject_name: 'Indian Constitution (ICO)', faculty_id: 'F_ICO', faculty_name: 'Prof. Ramesh', room_id: 'SJB-104', status: 'scheduled' },
           { id: 3, day: 'THU', period: 3, start: '10:40', end: '11:35', section, subject_code: 'MAT-TP', subject_name: 'Maths Tutorial (MATLAB)', faculty_id: 'F_MAT', faculty_name: 'Dr. Sreegowrav', room_id: 'Shakuntala Devi Lab', status: 'scheduled' },
-          { id: 4, day: 'THU', period: 4, start: '11:35', end: '12:30', section, subject_code: '1BAI103', subject_name: 'Intro to AI', faculty_id: 'F_SMP', faculty_name: 'Mr. Syed Matheen Pasha', original_faculty_name: 'Prof. Chaitra D B', room_id: 'SJB-104', status: 'changed', change_note: 'Covered by Mr. Syed Matheen Pasha (TARS approved)' },
-          { id: 5, day: 'THU', period: 5, start: '12:30', end: '13:25', section, subject_code: '1BPLC105B', subject_name: 'Python Theory', faculty_id: 'F_GPL', faculty_name: 'Mrs. Geetha P L', room_id: 'SJB-104', status: 'scheduled' },
-          { id: 6, day: 'THU', period: '6-7', start: '14:20', end: '16:10', section, subject_code: '1BPLC105B', subject_name: 'Python Lab', faculty_id: 'F_GPL', faculty_name: 'Mrs. Geetha P L', original_faculty_name: 'Prof. Chaitra D B', room_id: '511C', status: 'changed', change_note: 'Covered by Mrs. Geetha P L (co-faculty)' },
+          { id: 4, day: 'THU', period: 4, start: '11:35', end: '12:30', section, subject_code: '1BAI103', subject_name: 'Intro to AI', faculty_id: 'F_CDB', faculty_name: 'Prof. Chaitra D B', room_id: 'SJB-104', status: 'scheduled' },
+          { id: 5, day: 'THU', period: 5, start: '12:30', end: '13:25', section, subject_code: 'UNCONFIRMED-PLC', subject_name: 'Python Programming (Lab)', faculty_id: 'F_GPL', faculty_name: 'Mrs. Geetha P L', room_id: '511C', status: 'scheduled' },
+          { id: 6, day: 'THU', period: '6-7', start: '14:20', end: '16:10', section, subject_code: '1BPLC105B', subject_name: 'Python Lab', faculty_id: 'F_CDB', faculty_name: 'Prof. Chaitra D B', room_id: '511C', status: 'scheduled' },
         ];
       }
       return request<TimetableSlot[]>(`/timetable?section=${section}${week ? `&week=${week}` : ''}`);

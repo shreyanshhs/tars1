@@ -170,7 +170,7 @@ def test_hod_only_actions(api, monkeypatch):
     monkeypatch.setenv("TARS_DEMO_MODE", "1")
     stu, fac, hod = bearer(api, "S001"), bearer(api, "F08"), bearer(api, "H01")
     calls = [("POST", "/api/decisions/1/approve", None), ("POST", "/api/decisions/1/reject", None),
-             ("PATCH", "/api/faculty/F08", {"name": "X"}), ("POST", "/api/admin/reset-demo", None),
+             ("POST", "/api/decisions/1/close", {"reason": "test"}), ("PATCH", "/api/faculty/F08", {"name": "X"}), ("POST", "/api/admin/reset-demo", None),
              ("GET", "/api/decisions", None), ("GET", "/api/stats", None)]
     for method, url, body in calls:
         for who in (stu, fac):
@@ -243,6 +243,7 @@ def test_demo_repeats_after_reset_with_real_tokens(api, db, tg, monkeypatch):
         hod = bearer(api, "H01")                                    # password still valid after reset
         r = api.post("/api/incidents", json=DEMO, headers=hod)
         assert r.status_code == 202 and r.json()["decision_id"] == 1, run
+        assert api.post("/api/decisions/1/approve", headers=hod).status_code == 200
         assert tools.get_decision(1, con=db)["status"] == "pending_ack"
         assert n.scheduler.get_job("escalate-1") is not None
         assert {m["chat_id"] for m in fake.sent} == {CHAT["F07"], CHAT["F08"]}
